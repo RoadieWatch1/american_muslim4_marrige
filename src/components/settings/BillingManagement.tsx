@@ -15,14 +15,14 @@ import {
 
 interface Subscription {
   id: string;
-  tier: string;
-  status: string;
-  current_period_end: string;
+  tier: 'basic' | 'premium' | 'elite' | string;
+  status: 'active' | 'past_due' | 'canceled' | 'incomplete' | string;
+  current_period_end: string; // ISO date string
   cancel_at_period_end: boolean;
 }
 
 export default function BillingManagement() {
-  const { user, profile } = useAuth();
+  const { user } = useAuth();
   const { toast } = useToast();
   const [subscription, setSubscription] = useState<Subscription | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,6 +30,7 @@ export default function BillingManagement() {
 
   useEffect(() => {
     fetchSubscription();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   const fetchSubscription = async () => {
@@ -43,11 +44,12 @@ export default function BillingManagement() {
         .eq('status', 'active')
         .single();
 
-      if (error && error.code !== 'PGRST116') {
+      // Ignore "no rows" error (PostgREST code PGRST116)
+      if (error && (error as any).code !== 'PGRST116') {
         console.error('Error fetching subscription:', error);
       }
 
-      setSubscription(data);
+      setSubscription(data as any);
     } catch (error) {
       console.error('Error:', error);
     }
@@ -56,17 +58,16 @@ export default function BillingManagement() {
   const handleManageSubscription = async () => {
     setLoading(true);
     try {
-      // In production, this would redirect to Stripe Customer Portal
+      // In production: redirect to Stripe Customer Portal
       toast({
         title: 'Redirecting to billing portal...',
         description: 'You will be redirected to manage your subscription.',
       });
-      
-      // Simulate redirect
+
       setTimeout(() => {
         window.location.href = '/pricing';
       }, 1500);
-    } catch (error) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to open billing portal. Please try again.',
@@ -80,20 +81,20 @@ export default function BillingManagement() {
   const handleCancelSubscription = async () => {
     setCanceling(true);
     try {
-      // In production, this would call Stripe API to cancel subscription
+      // In production: call backend/Stripe to cancel
       toast({
         title: 'Subscription canceled',
-        description: 'Your subscription will remain active until the end of the billing period.',
+        description:
+          'Your subscription will remain active until the end of the billing period.',
       });
-      
-      // Update local state
+
       if (subscription) {
         setSubscription({
           ...subscription,
           cancel_at_period_end: true,
         });
       }
-    } catch (error) {
+    } catch {
       toast({
         title: 'Error',
         description: 'Failed to cancel subscription. Please try again.',
@@ -103,6 +104,10 @@ export default function BillingManagement() {
       setCanceling(false);
     }
   };
+
+  // Derive plan & status from subscription (fallback to "basic" if none)
+  const currentTier: Subscription['tier'] = subscription?.tier ?? 'basic';
+  const isActive = subscription?.status === 'active';
 
   const getTierIcon = (tier: string) => {
     switch (tier) {
@@ -118,11 +123,11 @@ export default function BillingManagement() {
   const getTierBadgeVariant = (tier: string) => {
     switch (tier) {
       case 'elite':
-        return 'default';
+        return 'default' as const;
       case 'premium':
-        return 'secondary';
+        return 'secondary' as const;
       default:
-        return 'outline';
+        return 'outline' as const;
     }
   };
 
@@ -138,20 +143,22 @@ export default function BillingManagement() {
             Manage your subscription and billing information
           </CardDescription>
         </CardHeader>
+
         <CardContent className="space-y-6">
           {/* Current Plan */}
           <div className="space-y-4">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-3">
-                {getTierIcon(profile?.subscription_tier || 'basic')}
+                {getTierIcon(currentTier)}
                 <div>
                   <p className="font-semibold">Current Plan</p>
                   <div className="flex items-center gap-2 mt-1">
-                    <Badge variant={getTierBadgeVariant(profile?.subscription_tier || 'basic')}>
-                      {profile?.subscription_tier?.charAt(0).toUpperCase() + 
-                       profile?.subscription_tier?.slice(1) || 'Basic'}
+                    <Badge variant={getTierBadgeVariant(currentTier)}>
+                      {currentTier
+                        ? currentTier.charAt(0).toUpperCase() + currentTier.slice(1)
+                        : 'Basic'}
                     </Badge>
-                    {profile?.subscription_status === 'active' && (
+                    {isActive && (
                       <Badge variant="outline" className="text-green-600">
                         Active
                       </Badge>
@@ -159,22 +166,25 @@ export default function BillingManagement() {
                   </div>
                 </div>
               </div>
-              
-              <Button 
-                variant="outline"
-                onClick={() => window.location.href = '/pricing'}
-              >
+
+              <Button variant="outline" onClick={() => (window.location.href = '/pricing')}>
                 Change Plan
               </Button>
             </div>
 
-            {subscription && subscription.current_period_end && (
+            {subscription?.current_period_end && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Calendar className="w-4 h-4" />
                 {subscription.cancel_at_period_end ? (
-                  <span>Subscription ends on {format(new Date(subscription.current_period_end), 'MMM dd, yyyy')}</span>
+                  <span>
+                    Subscription ends on{' '}
+                    {format(new Date(subscription.current_period_end), 'MMM dd, yyyy')}
+                  </span>
                 ) : (
-                  <span>Next billing date: {format(new Date(subscription.current_period_end), 'MMM dd, yyyy')}</span>
+                  <span>
+                    Next billing date:{' '}
+                    {format(new Date(subscription.current_period_end), 'MMM dd, yyyy')}
+                  </span>
                 )}
               </div>
             )}
@@ -186,29 +196,22 @@ export default function BillingManagement() {
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Subscription Ending</AlertTitle>
               <AlertDescription>
-                Your subscription will end on {format(new Date(subscription.current_period_end), 'MMM dd, yyyy')}. 
-                You'll lose access to premium features after this date.
+                Your subscription will end on{' '}
+                {format(new Date(subscription.current_period_end), 'MMM dd, yyyy')}. You&apos;ll
+                lose access to premium features after this date.
               </AlertDescription>
             </Alert>
           )}
 
           {/* Actions */}
-          {profile?.subscription_tier !== 'basic' && (
+          {currentTier !== 'basic' && (
             <div className="flex gap-3">
-              <Button
-                variant="outline"
-                onClick={handleManageSubscription}
-                disabled={loading}
-              >
+              <Button variant="outline" onClick={handleManageSubscription} disabled={loading}>
                 {loading ? 'Loading...' : 'Manage Billing'}
               </Button>
-              
+
               {!subscription?.cancel_at_period_end && (
-                <Button
-                  variant="destructive"
-                  onClick={handleCancelSubscription}
-                  disabled={canceling}
-                >
+                <Button variant="destructive" onClick={handleCancelSubscription} disabled={canceling}>
                   {canceling ? 'Canceling...' : 'Cancel Subscription'}
                 </Button>
               )}
@@ -216,15 +219,14 @@ export default function BillingManagement() {
           )}
 
           {/* Upgrade CTA for Basic users */}
-          {profile?.subscription_tier === 'basic' && (
+          {currentTier === 'basic' && (
             <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-lg">
               <h3 className="font-semibold mb-2">Unlock Premium Features</h3>
               <p className="text-sm text-gray-600 mb-4">
-                Get unlimited matches, priority visibility, and advanced filters with a premium subscription.
+                Get unlimited matches, priority visibility, and advanced filters with a premium
+                subscription.
               </p>
-              <Button onClick={() => window.location.href = '/pricing'}>
-                View Plans
-              </Button>
+              <Button onClick={() => (window.location.href = '/pricing')}>View Plans</Button>
             </div>
           )}
         </CardContent>
@@ -234,9 +236,6 @@ export default function BillingManagement() {
       <Card>
         <CardHeader>
           <CardTitle>Payment History</CardTitle>
-          <CardDescription>
-            View your past payments and invoices
-          </CardDescription>
         </CardHeader>
         <CardContent>
           <p className="text-sm text-gray-600">
