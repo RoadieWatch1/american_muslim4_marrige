@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { SwipeCard } from '@/components/discover/SwipeCard';
 import { FilterPanel } from '@/components/discover/FilterPanel';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { Heart, X, Sparkles, ArrowLeft, Crown, AlertCircle, Search, Bookmark } from 'lucide-react';
 import type { DiscoverFilters } from '@/types';

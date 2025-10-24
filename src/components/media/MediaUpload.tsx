@@ -1,6 +1,6 @@
 import { useState, useRef } from 'react';
 import { Upload, X, Image, Video, AlertCircle } from 'lucide-react';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { MEDIA_LIMITS, type MediaType } from '@/types/media';

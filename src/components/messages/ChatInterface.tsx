@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { Message, Conversation } from '@/types';
 import { MessageBubble } from './MessageBubble';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Send, Image, ArrowLeft, Eye, EyeOff } from 'lucide-react';

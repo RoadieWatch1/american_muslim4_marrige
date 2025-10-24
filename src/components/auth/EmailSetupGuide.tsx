@@ -1,6 +1,6 @@
 import React from 'react';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
-import { Button } from '@/components/ui/button';
+import { Button } from '@/components/ui/Button';
 import { Mail, ExternalLink, Settings, CheckCircle } from 'lucide-react';
 
 export const EmailSetupGuide: React.FC = () => {

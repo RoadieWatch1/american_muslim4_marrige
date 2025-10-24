@@ -1,6 +1,6 @@
 import { Conversation } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Badge } from '@/components/ui/badge';
+import { Badge } from '@/components/ui/Badge';
 import { formatDistanceToNow } from 'date-fns';
 
 interface ConversationListProps {

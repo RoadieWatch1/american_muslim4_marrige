@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { X, AlertCircle, CheckCircle, Clock } from 'lucide-react';
-import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/Button';
+import { Badge } from '@/components/ui/Badge';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { type Media } from '@/types/media';
