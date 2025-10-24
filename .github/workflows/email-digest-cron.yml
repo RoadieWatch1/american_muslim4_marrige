@@ -1,0 +1,32 @@
+name: Send Email Digests
+
+on:
+  schedule:
+    # Daily digest at 8 AM UTC
+    - cron: '0 8 * * *'
+    # Weekly digest on Monday at 8 AM UTC
+    - cron: '0 8 * * 1'
+  workflow_dispatch: # Allow manual trigger
+
+jobs:
+  send-daily-digest:
+    if: github.event.schedule == '0 8 * * *' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Daily Digest
+        run: |
+          curl -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/send-digest-emails" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"frequency": "daily"}'
+
+  send-weekly-digest:
+    if: github.event.schedule == '0 8 * * 1' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Send Weekly Digest
+        run: |
+          curl -X POST "${{ secrets.SUPABASE_URL }}/functions/v1/send-digest-emails" \
+            -H "Authorization: Bearer ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}" \
+            -H "Content-Type: application/json" \
+            -d '{"frequency": "weekly"}'
