@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Button } from './ui/Button';
+import { Button } from './ui/button';
 import { AuthModal } from './auth/AuthModal';
 
 export const Hero: React.FC = () => {
