@@ -49,13 +49,13 @@ export const DiscoverSection: React.FC = () => {
           <p className="mt-4 text-xl text-gray-600">Swipe with intention</p>
         </div>
         <div className="flex flex-col items-center">
-          <ProfileCard 
+          <ProfileCard
             profile={currentProfile}
             onLike={handleLike}
             onPass={handlePass}
             onSuperIntro={handleSuperIntro}
           />
-          <SwipeActions 
+          <SwipeActions
             onPass={handlePass}
             onLike={handleLike}
             onSuperIntro={handleSuperIntro}

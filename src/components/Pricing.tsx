@@ -95,7 +95,7 @@ export const Pricing: React.FC = () => {
                 ))}
               </ul>
               <Button 
-                variant={plan.popular ? 'secondary' : 'primary'}
+                variant={plan.popular ? 'secondary' : 'default'}
                 className="w-full mt-8"
                 onClick={() => handleSelectPlan(plan.name)}
               >
