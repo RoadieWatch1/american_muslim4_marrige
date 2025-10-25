@@ -84,10 +84,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
   };
 
-  /**
-   * Sends a 6-digit OTP via Edge Function `send-email-otp`.
-   * You can pass userId explicitly or let it use the current auth user.
-   */
+  // Send a 6-digit OTP via Edge Function `send-email-otp`
   const sendVerificationCode = async (email: string, userId?: string) => {
     const uid = userId ?? user?.id;
     if (!email) throw new Error('Email required');
@@ -97,7 +94,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       body: { email, userId: uid },
     });
 
-    // `res` has `{ data, error }`; we expect data?.success === true from the function
     if (res.error || !(res.data as any)?.success) {
       const msg =
         (res.data as any)?.error ||
@@ -107,18 +103,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  /**
-   * Verifies a 6-digit code:
-   * - looks up in email_verification_tokens by (user_id, token) and not expired
-   * - marks profile email as verified
-   * - deletes the used token
-   */
+  // Verify the OTP stored in `email_verification_tokens` (column is `code`, not `token`)
   const verifyEmailCode = async (userId: string, code: string) => {
     const { data, error } = await supabase
       .from('email_verification_tokens')
       .select('*')
       .eq('user_id', userId)
-      .eq('token', code)
+      .eq('code', code)
       .gte('expires_at', new Date().toISOString())
       .single();
 
@@ -136,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .from('email_verification_tokens')
       .delete()
       .eq('user_id', userId)
-      .eq('token', code);
+      .eq('code', code);
 
     return true;
   };
