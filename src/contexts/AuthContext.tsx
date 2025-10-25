@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
-import { User, Session } from '@supabase/supabase-js';
+import type { User, Session } from '@supabase/supabase-js';
 
 interface Profile {
   id: string;
@@ -24,7 +24,7 @@ interface AuthContextType {
   isAdmin: boolean;
   signUp: (email: string, password: string) => Promise<any>;
   signIn: (email: string, password: string) => Promise<void>;
-  sendVerificationCode: (email: string, userId: string) => Promise<void>;
+  sendVerificationCode: (email: string, userId?: string) => Promise<void>;
   verifyEmailCode: (userId: string, code: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   refreshProfile: () => Promise<void>;
@@ -46,18 +46,22 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
+    (async () => {
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
+      if (session?.user) await fetchProfile(session.user.id);
       setLoading(false);
-    });
+    })();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
-      if (session?.user) fetchProfile(session.user.id);
-      else setProfile(null);
+      if (session?.user) {
+        fetchProfile(session.user.id);
+      } else {
+        setProfile(null);
+      }
     });
 
     return () => subscription.unsubscribe();
@@ -68,35 +72,48 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       email,
       password,
       options: {
-        emailRedirectTo: window.location.origin + '/verify-email'
-      }
+        emailRedirectTo: `${window.location.origin}/verify-email`,
+      },
     });
-    
     if (error) throw error;
     return data;
   };
 
   const signIn = async (email: string, password: string) => {
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    
+    const { error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) throw error;
   };
 
-  const sendVerificationCode = async (email: string, userId: string) => {
-    const { data, error } = await supabase.functions.invoke('send-verification-email', {
-      body: { email, userId }
+  /**
+   * Sends a 6-digit OTP via Edge Function `send-email-otp`.
+   * You can pass userId explicitly or let it use the current auth user.
+   */
+  const sendVerificationCode = async (email: string, userId?: string) => {
+    const uid = userId ?? user?.id;
+    if (!email) throw new Error('Email required');
+    if (!uid) throw new Error('User ID required');
+
+    const res = await supabase.functions.invoke('send-email-otp', {
+      body: { email, userId: uid },
     });
-    
-    if (error || !data?.success) {
-      throw new Error(data?.error || 'Failed to send verification code');
+
+    // `res` has `{ data, error }`; we expect data?.success === true from the function
+    if (res.error || !(res.data as any)?.success) {
+      const msg =
+        (res.data as any)?.error ||
+        res.error?.message ||
+        'Failed to send verification code';
+      throw new Error(msg);
     }
   };
 
+  /**
+   * Verifies a 6-digit code:
+   * - looks up in email_verification_tokens by (user_id, token) and not expired
+   * - marks profile email as verified
+   * - deletes the used token
+   */
   const verifyEmailCode = async (userId: string, code: string) => {
-    // Check if the code matches
     const { data, error } = await supabase
       .from('email_verification_tokens')
       .select('*')
@@ -104,24 +121,23 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .eq('token', code)
       .gte('expires_at', new Date().toISOString())
       .single();
-    
+
     if (error || !data) return false;
-    
-    // Update profile to mark email as verified
+
     await supabase
       .from('profiles')
-      .update({ 
+      .update({
         email_verified: true,
-        email_verified_at: new Date().toISOString()
+        email_verified_at: new Date().toISOString(),
       })
       .eq('id', userId);
-    
-    // Delete the used token
+
     await supabase
       .from('email_verification_tokens')
       .delete()
-      .eq('user_id', userId);
-    
+      .eq('user_id', userId)
+      .eq('token', code);
+
     return true;
   };
 
@@ -134,19 +150,21 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   };
 
   return (
-    <AuthContext.Provider value={{ 
-      user, 
-      profile, 
-      session, 
-      loading, 
-      isAdmin, 
-      signUp,
-      signIn,
-      sendVerificationCode,
-      verifyEmailCode,
-      signOut, 
-      refreshProfile 
-    }}>
+    <AuthContext.Provider
+      value={{
+        user,
+        profile,
+        session,
+        loading,
+        isAdmin,
+        signUp,
+        signIn,
+        sendVerificationCode,
+        verifyEmailCode,
+        signOut,
+        refreshProfile,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );
