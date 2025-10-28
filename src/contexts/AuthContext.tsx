@@ -84,13 +84,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
   };
 
-  // Send a 6-digit OTP via Edge Function `send-email-otp`
+  // Send a 6-digit OTP via Edge Function `send-verification-code`
   const sendVerificationCode = async (email: string, userId?: string) => {
     const uid = userId ?? user?.id;
     if (!email) throw new Error('Email required');
     if (!uid) throw new Error('User ID required');
 
-    const res = await supabase.functions.invoke('send-email-otp', {
+    const res = await supabase.functions.invoke('send-verification-code', {
       body: { email, userId: uid },
     });
 
@@ -103,13 +103,13 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   };
 
-  // Verify the OTP stored in `email_verification_tokens` (column is `code`, not `token`)
+  // Verify the OTP stored in `email_verification_tokens` (column is `token`)
   const verifyEmailCode = async (userId: string, code: string) => {
     const { data, error } = await supabase
       .from('email_verification_tokens')
       .select('*')
       .eq('user_id', userId)
-      .eq('code', code)
+      .eq('token', code)
       .gte('expires_at', new Date().toISOString())
       .single();
 
@@ -127,7 +127,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       .from('email_verification_tokens')
       .delete()
       .eq('user_id', userId)
-      .eq('code', code);
+      .eq('token', code);
 
     return true;
   };
