@@ -42,20 +42,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
 
   const fetchProfile = async (userId: string) => {
     const { data } = await supabase.from('profiles').select('*').eq('id', userId).single();
-    setProfile(data);
+    setProfile(data ?? null);
   };
 
   useEffect(() => {
     (async () => {
       const { data: { session } } = await supabase.auth.getSession();
-      setSession(session);
+      setSession(session ?? null);
       setUser(session?.user ?? null);
       if (session?.user) await fetchProfile(session.user.id);
       setLoading(false);
     })();
 
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setSession(session);
+      setSession(session ?? null);
       setUser(session?.user ?? null);
       if (session?.user) {
         fetchProfile(session.user.id);
@@ -71,9 +71,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     const { data, error } = await supabase.auth.signUp({
       email,
       password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/verify-email`,
-      },
+      // We rely on our OTP flow; keeping redirect is harmless but optional.
+      options: { emailRedirectTo: `${window.location.origin}/verify-email` },
     });
     if (error) throw error;
     return data;
@@ -84,26 +83,34 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (error) throw error;
   };
 
-  // Send a 6-digit OTP via Edge Function `send-verification-code`
+  /**
+   * Send a 6-digit OTP via Edge Function `send-email-otp`.
+   * The function accepts { email, userId } and returns { success: true } (plus optional emailWarning).
+   */
   const sendVerificationCode = async (email: string, userId?: string) => {
     const uid = userId ?? user?.id;
     if (!email) throw new Error('Email required');
     if (!uid) throw new Error('User ID required');
 
-    const res = await supabase.functions.invoke('send-verification-code', {
+    // Primary path: invoke the function by name
+    const { data, error } = await supabase.functions.invoke('send-email-otp', {
       body: { email, userId: uid },
     });
 
-    if (res.error || !(res.data as any)?.success) {
+    // Handle supabase error or unsuccessful payload
+    if (error || !(data as any)?.success) {
       const msg =
-        (res.data as any)?.error ||
-        res.error?.message ||
+        (data as any)?.error ||
+        error?.message ||
         'Failed to send verification code';
       throw new Error(msg);
     }
   };
 
-  // Verify the OTP stored in `email_verification_tokens` (column is `token`)
+  /**
+   * Verify OTP stored in `email_verification_tokens`.
+   * We check the `token` column (function also writes `code` for compatibility).
+   */
   const verifyEmailCode = async (userId: string, code: string) => {
     const { data, error } = await supabase
       .from('email_verification_tokens')

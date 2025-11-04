@@ -17,27 +17,27 @@ export default function VerifyEmail() {
   const [message, setMessage] = useState('');
   const [resending, setResending] = useState(false);
 
-  // OTP state
+  // OTP entry state
   const [otp, setOtp] = useState('');
   const [verifyingCode, setVerifyingCode] = useState(false);
 
   useEffect(() => {
     const token = searchParams.get('token');
     if (token) {
-      // Support old link-based flow for backward compatibility
+      // Backward-compat for old link-based flow
       verifyToken(token);
     } else if (!user) {
       setStatus('error');
       setMessage('Invalid verification session');
     } else {
-      // Default to OTP entry / resend code flow
+      // Show OTP UI by default
       setStatus('resend');
     }
   }, [searchParams, user]);
 
   const verifyToken = async (token: string) => {
     try {
-      // Check if token exists and is valid
+      // Validate token exists and unused
       const { data: tokenData, error: tokenError } = await supabase
         .from('email_verification_tokens')
         .select('*')
@@ -51,7 +51,7 @@ export default function VerifyEmail() {
         return;
       }
 
-      // Check if token is expired
+      // Check expiration
       if (new Date(tokenData.expires_at) < new Date()) {
         setStatus('error');
         setMessage('Verification link has expired. Please use a new code.');
@@ -64,7 +64,7 @@ export default function VerifyEmail() {
         .update({ used_at: new Date().toISOString() })
         .eq('token', token);
 
-      // Update profile to mark email as verified
+      // Mark profile verified
       const { error: updateError } = await supabase
         .from('profiles')
         .update({
@@ -79,9 +79,7 @@ export default function VerifyEmail() {
       setStatus('success');
       setMessage('Email verified successfully! Redirecting...');
 
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 2000);
+      setTimeout(() => navigate('/dashboard'), 2000);
     } catch (error: any) {
       console.error('Verification error:', error);
       setStatus('error');
@@ -94,15 +92,15 @@ export default function VerifyEmail() {
 
     setResending(true);
     try {
-      const { error } = await supabase.functions.invoke('send-verification-code', {
-        body: {
-          email: user.email,
-          userId: user.id,
-          isResend: true,
-        },
+      // Use the single OTP function
+      const { data, error } = await supabase.functions.invoke('send-email-otp', {
+        body: { email: user.email, userId: user.id, isResend: true },
       });
 
-      if (error) throw error;
+      if (error || !(data as any)?.success) {
+        const msg = (data as any)?.error || error?.message || 'Failed to send verification code.';
+        throw new Error(msg);
+      }
 
       toast({
         title: 'Code Sent',
@@ -112,7 +110,7 @@ export default function VerifyEmail() {
       console.error(error);
       toast({
         title: 'Error',
-        description: 'Failed to send verification code.',
+        description: error?.message || 'Failed to send verification code.',
         variant: 'destructive',
       });
     } finally {
@@ -147,10 +145,7 @@ export default function VerifyEmail() {
       setStatus('success');
       setMessage('Email verified successfully! Redirecting...');
       await refreshProfile();
-
-      setTimeout(() => {
-        navigate('/dashboard');
-      }, 1500);
+      setTimeout(() => navigate('/dashboard'), 1500);
     } catch (err) {
       console.error(err);
       toast({
@@ -201,7 +196,8 @@ export default function VerifyEmail() {
               <div className="text-center space-y-2">
                 <Mail className="w-16 h-16 text-teal-600 mx-auto" />
                 <p className="text-gray-600">
-                  Enter the 6-digit code we emailed to <span className="font-medium">{user.email}</span>.
+                  Enter the 6-digit code we emailed to{' '}
+                  <span className="font-medium">{user.email}</span>.
                 </p>
               </div>
 
