@@ -21,6 +21,7 @@ import VerifyEmail from "./pages/VerifyEmail";
 import ResetPassword from "./pages/ResetPassword";
 import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
+import AuthCallback from "./pages/AuthCallback";
 
 
 
@@ -55,6 +56,7 @@ const App = () => (
               <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
               <Route path="/verify-email" element={<VerifyEmail />} />
               <Route path="/reset-password" element={<ResetPassword />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/analytics" element={<Analytics />} />
 
 
@@ -69,3 +71,4 @@ const App = () => (
 
 
 export default App;
+// https://www.americanmuslim4marriage.com
