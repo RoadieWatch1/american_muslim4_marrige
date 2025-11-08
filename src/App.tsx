@@ -24,15 +24,6 @@ import Profile from "./pages/Profile";
 import AuthCallback from "./pages/AuthCallback";
 
 
-
-
-
-
-
-
-
-
-
 const queryClient = new QueryClient();
 
 const App = () => (
@@ -71,4 +62,3 @@ const App = () => (
 
 
 export default App;
-// https://www.americanmuslim4marriage.com
