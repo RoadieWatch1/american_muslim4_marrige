@@ -49,10 +49,8 @@ const App = () => (
               <Route path="/reset-password" element={<ResetPassword />} />
               <Route path="/auth/callback" element={<AuthCallback />} />
               <Route path="/analytics" element={<Analytics />} />
-
-
               <Route path="*" element={<NotFound />} />
-            </Routes>
+            </Routes>            
           </BrowserRouter>
         </TooltipProvider>
       </AuthProvider>

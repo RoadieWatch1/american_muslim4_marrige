@@ -3,6 +3,7 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 interface Profile {
+  subscription_tier: string;
   dob: any;
   city: string;
   state: string;

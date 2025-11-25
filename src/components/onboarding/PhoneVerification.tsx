@@ -11,9 +11,10 @@ import { useAuth } from '@/contexts/AuthContext';
 interface PhoneVerificationProps {
   onVerified: () => void;
   onSkip: () => void;
+  onBack: () => void; // 🔹 new prop to go back to previous onboarding step
 }
 
-export function PhoneVerification({ onVerified, onSkip }: PhoneVerificationProps) {
+export function PhoneVerification({ onVerified, onSkip, onBack }: PhoneVerificationProps) {
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [step, setStep] = useState<'phone' | 'verify'>('phone');
@@ -125,10 +126,16 @@ export function PhoneVerification({ onVerified, onSkip }: PhoneVerificationProps
               <p className="text-xs text-gray-500">Include country code (e.g., +1 for US)</p>
             </div>
             <div className="flex gap-2">
+              {/* 🔹 Back to previous onboarding step (Islamic) */}
+              <Button variant="outline" onClick={onBack}>
+                Back
+              </Button>
               <Button onClick={sendVerificationCode} disabled={loading} className="flex-1">
                 {loading ? 'Sending...' : 'Send Code'}
               </Button>
-              <Button variant="outline" onClick={onSkip}>Skip</Button>
+              <Button variant="ghost" onClick={onSkip}>
+                Skip
+              </Button>
             </div>
           </>
         ) : (
@@ -149,7 +156,10 @@ export function PhoneVerification({ onVerified, onSkip }: PhoneVerificationProps
                 <Check className="w-4 h-4 mr-2" />
                 {loading ? 'Verifying...' : 'Verify'}
               </Button>
-              <Button variant="outline" onClick={() => setStep('phone')}>Back</Button>
+              {/* This Back only goes back to phone-input inside step 7 */}
+              <Button variant="outline" onClick={() => setStep('phone')}>
+                Back
+              </Button>
             </div>
           </>
         )}

@@ -4,10 +4,11 @@ import { Button } from '@/components/ui/Button';
 import { User, Users } from 'lucide-react';
 
 interface RoleSelectionProps {
+  selectedGender?: 'male' | 'female';
   onSelect: (gender: 'male' | 'female') => void;
 }
 
-export const RoleSelection: React.FC<RoleSelectionProps> = ({ onSelect }) => {
+export const RoleSelection: React.FC<RoleSelectionProps> = ({selectedGender, onSelect }) => {
   return (
     <div className="max-w-2xl mx-auto p-6">
       <div className="text-center mb-8">
@@ -16,7 +17,7 @@ export const RoleSelection: React.FC<RoleSelectionProps> = ({ onSelect }) => {
       </div>
       
       <div className="grid md:grid-cols-2 gap-6">
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-teal-500" onClick={() => onSelect('male')}>
+        <Card className={`cursor-pointer hover:shadow-lg transition-shadow border-2 ${selectedGender==='male'&&'border-teal-500'} hover:border-teal-500`} onClick={() => onSelect('male')}>
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-teal-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <User className="w-10 h-10 text-teal-600" />
@@ -27,7 +28,7 @@ export const RoleSelection: React.FC<RoleSelectionProps> = ({ onSelect }) => {
           </CardContent>
         </Card>
 
-        <Card className="cursor-pointer hover:shadow-lg transition-shadow border-2 hover:border-teal-500" onClick={() => onSelect('female')}>
+        <Card className={`cursor-pointer hover:shadow-lg transition-shadow border-2 ${selectedGender==='female'&&'border-teal-500'} hover:border-teal-500`} onClick={() => onSelect('female')}>
           <CardContent className="p-8 text-center">
             <div className="w-20 h-20 bg-pink-100 rounded-full flex items-center justify-center mx-auto mb-4">
               <Users className="w-10 h-10 text-pink-600" />

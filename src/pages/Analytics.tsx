@@ -1,30 +1,61 @@
+// src/pages/Analytics.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+
 import { ProfileViewsChart } from '@/components/analytics/ProfileViewsChart';
 import { MatchSuccessRate } from '@/components/analytics/MatchSuccessRate';
 import { ActivityHeatmap } from '@/components/analytics/ActivityHeatmap';
 import { MessageStats } from '@/components/analytics/MessageStats';
 import { ProfileAttributes } from '@/components/analytics/ProfileAttributes';
 import { PersonalizedTips } from '@/components/analytics/PersonalizedTips';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+
+import {
+  Tabs,
+  TabsContent,
+  TabsList,
+  TabsTrigger,
+} from '@/components/ui/tabs';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { BarChart3, TrendingUp, Users, MessageSquare } from 'lucide-react';
-import { format, subDays, startOfWeek, endOfWeek, startOfMonth, endOfMonth } from 'date-fns';
+import { format, subDays } from 'date-fns';
+
+type LikeRow = {
+  id: string;
+  from_user_id: string;
+  to_user_id: string;
+  type: 'like' | 'super_intro' | 'pass';
+  created_at: string;
+};
+
+type MatchRow = {
+  id: string;
+  user1_id: string;
+  user2_id: string;
+  created_at: string;
+};
 
 export default function Analytics() {
   const { user } = useAuth();
   const navigate = useNavigate();
-  const [timeRange, setTimeRange] = useState('week');
+  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
   const [loading, setLoading] = useState(true);
   const [analyticsData, setAnalyticsData] = useState<any>({
     profileViews: [],
+    totalViews: 0,
+    weeklyGrowth: 0,
     matchStats: {},
     activityHeatmap: [],
     messageStats: {},
     profileAttributes: [],
-    tips: []
+    tips: [],
   });
 
   useEffect(() => {
@@ -33,41 +64,69 @@ export default function Analytics() {
       return;
     }
     fetchAnalytics();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, timeRange]);
 
   const fetchAnalytics = async () => {
+    if (!user) return;
     try {
       setLoading(true);
-      
-      // Fetch profile views
-      const viewsQuery = supabase
-        .from('profile_views')
+
+      // ────────────────────────────
+      // Time range filter
+      // ────────────────────────────
+      let since: Date | null = null;
+      if (timeRange === 'week') since = subDays(new Date(), 7);
+      if (timeRange === 'month') since = subDays(new Date(), 30);
+
+      // ────────────────────────────
+      // Likes (sent + received)
+      // ────────────────────────────
+      const likesQuery = supabase
+        .from('likes')
         .select('*')
-        .eq('profile_id', user?.id);
-      
-      if (timeRange === 'week') {
-        viewsQuery.gte('viewed_at', subDays(new Date(), 7).toISOString());
-      } else if (timeRange === 'month') {
-        viewsQuery.gte('viewed_at', subDays(new Date(), 30).toISOString());
+        .or(
+          `from_user_id.eq.${user.id},to_user_id.eq.${user.id}`
+        ) as any;
+
+      if (since) {
+        likesQuery.gte('created_at', since.toISOString());
       }
 
-      const { data: views } = await viewsQuery;
+      const { data: likesRaw, error: likesError } =
+        await likesQuery as { data: LikeRow[] | null; error: any };
 
-      // Fetch match analytics
-      const { data: matches } = await supabase
-        .from('match_analytics')
+      if (likesError) {
+        console.error('Error fetching likes for analytics:', likesError);
+      }
+
+      const likes: LikeRow[] = likesRaw || [];
+
+      // ────────────────────────────
+      // Matches
+      // ────────────────────────────
+      const matchesQuery = supabase
+        .from('matches')
         .select('*')
-        .eq('user_id', user?.id);
+        .or(
+          `user1_id.eq.${user.id},user2_id.eq.${user.id}`
+        ) as any;
 
-      // Fetch message analytics
-      const { data: messages } = await supabase
-        .from('message_analytics')
-        .select('*')
-        .or(`sender_id.eq.${user?.id},receiver_id.eq.${user?.id}`);
+      if (since) {
+        matchesQuery.gte('created_at', since.toISOString());
+      }
 
-      // Process data for charts
-      const processedData = processAnalyticsData(views || [], matches || [], messages || []);
-      setAnalyticsData(processedData);
+      const { data: matchesRaw, error: matchesError } =
+        await matchesQuery as { data: MatchRow[] | null; error: any };
+
+      if (matchesError) {
+        console.error('Error fetching matches for analytics:', matchesError);
+      }
+
+      const matches: MatchRow[] = matchesRaw || [];
+
+      const processed = processAnalyticsData(likes, matches, user.id, navigate);
+      setAnalyticsData(processed);
     } catch (error) {
       console.error('Error fetching analytics:', error);
     } finally {
@@ -75,130 +134,153 @@ export default function Analytics() {
     }
   };
 
-  const processAnalyticsData = (views: any[], matches: any[], messages: any[]) => {
-    // Process profile views for chart
-    const viewsByDate = views.reduce((acc, view) => {
-      const date = format(new Date(view.viewed_at), 'MMM dd');
-      if (!acc[date]) acc[date] = { views: 0, uniqueViewers: new Set() };
-      acc[date].views++;
-      if (view.viewer_id) acc[date].uniqueViewers.add(view.viewer_id);
+  // ─────────────────────────────────────────────────────────────
+  // Transform likes + matches into the shape the widgets expect
+  // ─────────────────────────────────────────────────────────────
+  const processAnalyticsData = (
+    likes: LikeRow[],
+    matches: MatchRow[],
+    userId: string,
+    navigateFn: (path: string) => void
+  ) => {
+    // ---------------- Profile “views” (approx) ----------------
+    // Treat any like / super_intro / pass directed *to* you as a view.
+    const directedAtUser = likes.filter((l) => l.to_user_id === userId);
+
+    const viewsByDate = directedAtUser.reduce((acc: any, like) => {
+      const dateKey = format(new Date(like.created_at), 'MMM dd');
+      if (!acc[dateKey]) {
+        acc[dateKey] = { views: 0, uniqueViewers: new Set<string>() };
+      }
+      acc[dateKey].views += 1;
+      acc[dateKey].uniqueViewers.add(like.from_user_id);
       return acc;
-    }, {} as any);
+    }, {});
 
-    const profileViewsData = Object.entries(viewsByDate).map(([date, data]: any) => ({
-      date,
-      views: data.views,
-      uniqueViewers: data.uniqueViewers.size
-    }));
+    const profileViewsData = Object.entries(viewsByDate).map(
+      ([date, value]: any) => ({
+        date,
+        views: value.views,
+        uniqueViewers: value.uniqueViewers.size,
+      })
+    );
 
-    // Calculate match success rate
-    const likesSent = matches.filter(m => m.action_type === 'like_sent').length;
-    const likesReceived = matches.filter(m => m.action_type === 'like_received').length;
-    const matchesCreated = matches.filter(m => m.action_type === 'match_created').length;
-    const rejections = matches.filter(m => m.action_type === 'match_rejected').length;
-    const successRate = likesSent > 0 ? (matchesCreated / likesSent) * 100 : 0;
+    // ---------------- Match stats ----------------
+    const likesSent = likes.filter(
+      (l) => l.from_user_id === userId && l.type !== 'pass'
+    ).length;
 
-    // Create activity heatmap data
-    const activityData = matches.reduce((acc, match) => {
-      const date = new Date(match.created_at);
-      const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][date.getDay()];
-      const hour = date.getHours();
+    const likesReceived = directedAtUser.filter(
+      (l) => l.type !== 'pass'
+    ).length;
+
+    const matchesCreated = matches.length;
+
+    const rejections = likes.filter(
+      (l) => l.from_user_id === userId && l.type === 'pass'
+    ).length;
+
+    const successRate =
+      likesSent > 0 ? (matchesCreated / likesSent) * 100 : 0;
+
+    // ---------------- Activity heatmap ----------------
+    // Use matches as “high-value” events on the heatmap.
+    const activityDataObj = matches.reduce((acc: any, match) => {
+      const d = new Date(match.created_at);
+      const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
+      const hour = d.getHours();
       const key = `${day}-${hour}`;
       if (!acc[key]) acc[key] = { day, hour, activity: 0 };
-      acc[key].activity++;
+      acc[key].activity += 1;
       return acc;
-    }, {} as any);
+    }, {});
+    const activityHeatmap = Object.values(activityDataObj);
 
-    // Process message stats
-    const messagesByDay = messages.reduce((acc, msg) => {
-      const date = format(new Date(msg.created_at), 'EEE');
-      if (!acc[date]) acc[date] = { sent: 0, received: 0 };
-      if (msg.sender_id === user?.id) {
-        acc[date].sent++;
-      } else {
-        acc[date].received++;
-      }
-      return acc;
-    }, {} as any);
-
+    // ---------------- Message stats (placeholder for now) ----------------
     const weekDays = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-    const messageWeeklyData = weekDays.map(day => ({
+    const messageWeeklyData = weekDays.map((day) => ({
       day,
-      sent: messagesByDay[day]?.sent || 0,
-      received: messagesByDay[day]?.received || 0
+      sent: 0,
+      received: 0,
     }));
 
-    // Calculate response times
-    const responseTimes = messages
-      .filter(m => m.response_time_minutes)
-      .map(m => m.response_time_minutes);
-    const avgResponseTime = responseTimes.length > 0
-      ? Math.round(responseTimes.reduce((a, b) => a + b, 0) / responseTimes.length)
-      : 0;
-    const responseRate = messages.length > 0
-      ? Math.round((messages.filter(m => m.has_response).length / messages.length) * 100)
-      : 0;
+    const messageStats = {
+      totalMessages: 0,
+      averageResponseTime: 0,
+      responseRate: 0,
+      weeklyData: messageWeeklyData,
+    };
 
-    // Mock profile attributes data
+    // ---------------- Mock profile attributes ----------------
     const profileAttributes = [
       { name: 'Profile Photo', successRate: 85, views: 450, matches: 38 },
       { name: 'Prayer Habits', successRate: 78, views: 380, matches: 30 },
       { name: 'Education', successRate: 72, views: 320, matches: 23 },
       { name: 'Career', successRate: 68, views: 290, matches: 20 },
-      { name: 'Family Values', successRate: 65, views: 250, matches: 16 }
+      { name: 'Family Values', successRate: 65, views: 250, matches: 16 },
     ];
 
-    // Generate personalized tips
-    const tips = generateTips(successRate, avgResponseTime, views.length);
+    const tips = generateTips(
+      successRate,
+      0, // avg response time (we don't have messages yet)
+      directedAtUser.length,
+      navigateFn
+    );
 
     return {
       profileViews: profileViewsData,
-      totalViews: views.length,
-      weeklyGrowth: calculateGrowth(views),
+      totalViews: directedAtUser.length,
+      weeklyGrowth: calculateGrowth(directedAtUser),
       matchStats: {
         likesSent,
         likesReceived,
         matches: matchesCreated,
         rejections,
-        successRate
+        successRate,
       },
-      activityHeatmap: Object.values(activityData),
-      messageStats: {
-        totalMessages: messages.length,
-        averageResponseTime: avgResponseTime,
-        responseRate,
-        weeklyData: messageWeeklyData
-      },
+      activityHeatmap,
+      messageStats,
       profileAttributes,
-      tips
+      tips,
     };
   };
 
-  const calculateGrowth = (views: any[]) => {
-    const thisWeek = views.filter(v => 
-      new Date(v.viewed_at) >= subDays(new Date(), 7)
+  // Growth based on “views” in last 7 days vs previous 7 days
+  const calculateGrowth = (directedLikes: LikeRow[]) => {
+    const now = new Date();
+    const sevenDaysAgo = subDays(now, 7);
+    const fourteenDaysAgo = subDays(now, 14);
+
+    const thisWeek = directedLikes.filter(
+      (l) => new Date(l.created_at) >= sevenDaysAgo
     ).length;
-    const lastWeek = views.filter(v => 
-      new Date(v.viewed_at) >= subDays(new Date(), 14) &&
-      new Date(v.viewed_at) < subDays(new Date(), 7)
-    ).length;
-    
+
+    const lastWeek = directedLikes.filter((l) => {
+      const d = new Date(l.created_at);
+      return d >= fourteenDaysAgo && d < sevenDaysAgo;
+    }).length;
+
     if (lastWeek === 0) return thisWeek > 0 ? 100 : 0;
     return Math.round(((thisWeek - lastWeek) / lastWeek) * 100);
   };
 
-  const generateTips = (successRate: number, avgResponseTime: number, viewCount: number) => {
-    const tips = [];
-    
+  const generateTips = (
+    successRate: number,
+    avgResponseTime: number,
+    viewCount: number,
+    navigateFn: (path: string) => void
+  ) => {
+    const tips: any[] = [];
+
     if (successRate < 30) {
       tips.push({
         id: '1',
         category: 'matching',
         text: 'Your match success rate is below average. Try being more selective with your likes and focus on profiles that align with your values.',
-        priority: 3
+        priority: 3,
       });
     }
-    
+
     if (avgResponseTime > 1440) {
       tips.push({
         id: '2',
@@ -207,45 +289,45 @@ export default function Analytics() {
         priority: 3,
         action: {
           label: 'Check Messages',
-          onClick: () => navigate('/messages')
-        }
+          onClick: () => navigateFn('/messages'),
+        },
       });
     }
-    
+
     if (viewCount < 10) {
       tips.push({
         id: '3',
         category: 'profile_improvement',
-        text: 'Your profile is getting fewer views. Consider updating your photos and adding more details about your interests and values.',
+        text: 'Your profile is getting fewer interactions. Consider updating your photos and adding more details about your interests and values.',
         priority: 2,
         action: {
           label: 'Update Profile',
-          onClick: () => navigate('/profile')
-        }
+          onClick: () => navigateFn('/profile'),
+        },
       });
     }
-    
+
     tips.push({
       id: '4',
       category: 'activity_timing',
-      text: 'Based on your activity patterns, you get the most matches between 7-9 PM. Try being active during these peak hours!',
-      priority: 1
+      text: 'Try being active during the evening hours – that’s when most users tend to like and match.',
+      priority: 1,
     });
-    
+
     tips.push({
       id: '5',
       category: 'profile_improvement',
-      text: 'Profiles with 4+ photos get 3x more matches. Consider adding more photos to showcase different aspects of your personality.',
-      priority: 2
+      text: 'Profiles with 4+ photos typically get more matches. Consider adding a few more photos.',
+      priority: 2,
     });
-    
+
     return tips;
   };
 
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary" />
       </div>
     );
   }
@@ -255,9 +337,16 @@ export default function Analytics() {
       <div className="flex items-center justify-between mb-8">
         <div>
           <h1 className="text-3xl font-bold">Analytics Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Track your match statistics and improve your success rate</p>
+          <p className="text-muted-foreground mt-1">
+            Track your match statistics and improve your success rate
+          </p>
         </div>
-        <Select value={timeRange} onValueChange={setTimeRange}>
+        <Select
+          value={timeRange}
+          onValueChange={(v) =>
+            setTimeRange(v as 'week' | 'month' | 'all')
+          }
+        >
           <SelectTrigger className="w-32">
             <SelectValue />
           </SelectTrigger>
@@ -291,7 +380,7 @@ export default function Analytics() {
 
         <TabsContent value="overview" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
-            <ProfileViewsChart 
+            <ProfileViewsChart
               data={analyticsData.profileViews}
               totalViews={analyticsData.totalViews}
               weeklyGrowth={analyticsData.weeklyGrowth}
@@ -304,7 +393,9 @@ export default function Analytics() {
         <TabsContent value="matches" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
             <MatchSuccessRate {...analyticsData.matchStats} />
-            <ProfileAttributes attributes={analyticsData.profileAttributes} />
+            <ProfileAttributes
+              attributes={analyticsData.profileAttributes}
+            />
           </div>
         </TabsContent>
 
