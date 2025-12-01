@@ -69,6 +69,7 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
               // 🔹 keep read-status in sync (double tick)
               setMessages((prev) =>
                 prev.map((m) =>
+                  // eslint-disable-next-line @typescript-eslint/no-explicit-any
                   m.id === (payload.new as any).id
                     ? (payload.new as Message)
                     : m
@@ -160,9 +161,7 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
           {conversation.other_user.photos?.[0] && (
             <AvatarImage src={conversation.other_user.photos[0]} />
           )}
-          <AvatarFallback
-            className={`${avatarColor} text-white font-semibold`}
-          >
+          <AvatarFallback className={`${avatarColor} text-white font-semibold`}>
             {initial}
           </AvatarFallback>
         </Avatar>
@@ -177,7 +176,11 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
           size="icon"
           onClick={() => setWaliVisible((v) => !v)}
         >
-          {waliVisible ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
+          {waliVisible ? (
+            <Eye className="h-5 w-5" />
+          ) : (
+            <EyeOff className="h-5 w-5" />
+          )}
         </Button>
       </div>
 
