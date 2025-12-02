@@ -1,9 +1,8 @@
-/* eslint-disable prefer-const */
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useEffect, useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/Button';
-import { Camera, X, Upload, AlertCircle } from 'lucide-react';
+import { Camera, X, Upload, AlertCircle, Star } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -14,22 +13,22 @@ interface PhotoUploadProps {
 }
 
 type PhotoItem = {
-  id: string;
+  id?: string;
   url: string;
-  is_primary?: boolean;
 };
 
 export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   onSubmit,
   onBack,
 }) => {
+  const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
+  const [mainPhotoId, setMainPhotoId] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(true);
   const [error, setError] = useState('');
-  const { user } = useAuth();
 
-  // Helper: derive storage path from URL
+  // Helper: from public URL → storage object path (after /profile-media/)
   const extractPathFromUrl = (url: string): string | null => {
     const marker = '/profile-media/';
     const idx = url.indexOf(marker);
@@ -37,7 +36,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
     return url.substring(idx + marker.length);
   };
 
-  // 🔹 Load existing photos (including primary) on mount
+  // 🔹 Load existing photos + current main photo on mount
   useEffect(() => {
     if (!user) return;
 
@@ -45,69 +44,49 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
       setLoadingExisting(true);
       setError('');
 
-      const { data, error } = await supabase
-        .from('media')
-        .select('id, url, is_primary')
-        .eq('user_id', user.id)
-        .eq('type', 'photo')
-        .in('status', ['pending', 'approved'])
-        .order('created_at', { ascending: true });
+      try {
+        // 1) load media
+        const { data: mediaData, error: mediaError } = await supabase
+          .from('media')
+          .select('id, url')
+          .eq('user_id', user.id)
+          .eq('type', 'photo')
+          .in('status', ['pending', 'approved'])
+          .order('created_at', { ascending: true });
 
-      if (error) {
-        console.error('Error loading existing photos', error);
-        setError('Could not load your existing photos. Please try again.');
-      } else if (data) {
-        const items: PhotoItem[] = data.map((row: any) => ({
-          id: row.id,
-          url: row.url,
-          is_primary: row.is_primary,
-        }));
-        setPhotos(items.slice(0, 6));
+        if (mediaError) {
+          console.error('Error loading existing photos', mediaError);
+          setError(
+            'Could not load your existing photos. Please try again later.'
+          );
+        } else if (mediaData) {
+          const items: PhotoItem[] = mediaData
+            .filter((row: any) => !!row.url)
+            .map((row: any) => ({
+              id: row.id,
+              url: row.url,
+            }));
+          setPhotos(items.slice(0, 6));
+        }
+
+        // 2) load current main photo id from profiles.profile_photo_id
+        const { data: profileRow, error: profileError } = await supabase
+          .from('profiles')
+          .select('profile_photo_id')
+          .eq('id', user.id)
+          .maybeSingle();
+
+        if (profileError) {
+          console.error('Error loading profile main photo', profileError);
+        } else if (profileRow?.profile_photo_id) {
+          setMainPhotoId(profileRow.profile_photo_id);
+        }
+      } finally {
+        setLoadingExisting(false);
       }
-
-      setLoadingExisting(false);
     })();
   }, [user]);
 
-  // 🔹 Mark a specific photo as primary
-  const setPrimaryPhoto = async (mediaId: string) => {
-    if (!user) return;
-
-    try {
-      // 1. Unset existing primary
-      await supabase
-        .from('media')
-        .update({ is_primary: false })
-        .eq('user_id', user.id)
-        .eq('type', 'photo')
-        .eq('is_primary', true);
-
-      // 2. Set new primary
-      await supabase
-        .from('media')
-        .update({ is_primary: true })
-        .eq('id', mediaId);
-
-      // 3. Update profile.profile_photo_id
-      await supabase
-        .from('profiles')
-        .update({ profile_photo_id: mediaId })
-        .eq('id', user.id);
-
-      // 4. Update frontend
-      setPhotos((prev) =>
-        prev.map((p) =>
-          p.id === mediaId
-            ? { ...p, is_primary: true }
-            : { ...p, is_primary: false }
-        )
-      );
-    } catch (err) {
-      console.error('Error setting primary photo:', err);
-    }
-  };
-
-  // 🔹 Upload photos
   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || !user) return;
@@ -125,12 +104,12 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
           throw new Error('Image size should be less than 5MB');
         }
 
-        const ext = file.name.split('.').pop();
+        const fileExt = file.name.split('.').pop();
         const storagePath = `${user.id}/${Date.now()}-${Math.random()
           .toString(36)
-          .slice(2)}.${ext}`;
+          .slice(2)}.${fileExt}`;
 
-        // Upload to storage
+        // ✅ upload to profile-media bucket
         const { error: uploadError } = await supabase.storage
           .from('profile-media')
           .upload(storagePath, file);
@@ -141,84 +120,111 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
           data: { publicUrl },
         } = supabase.storage.from('profile-media').getPublicUrl(storagePath);
 
-        // Insert into media
+        // ✅ record in media table
         const { data: inserted, error: dbError } = await supabase
           .from('media')
           .insert({
             user_id: user.id,
             type: 'photo',
             url: publicUrl,
-            is_primary: false, // temporary
-            status: 'approved',
+            status: 'approved', // or 'pending' if you have moderation
           })
-          .select('id, url, is_primary')
+          .select('id, url')
           .maybeSingle();
 
         if (dbError) throw dbError;
 
-        return {
-          id: inserted.id,
-          url: inserted.url,
-          is_primary: inserted.is_primary,
-        } as PhotoItem;
+        const item: PhotoItem = {
+          id: inserted?.id,
+          url: inserted?.url ?? publicUrl,
+        };
+
+        return item;
       });
 
-      const uploaded = await Promise.all(uploadPromises);
-
-      let updatedList = [...photos, ...uploaded].slice(0, 6);
-      setPhotos(updatedList);
-
-      // ⭐ AUTO-SET FIRST PHOTO AS PRIMARY
-      const hasPrimary = updatedList.some((p) => p.is_primary);
-
-      if (!hasPrimary && updatedList.length > 0) {
-        const firstPhoto = updatedList[0];
-        await setPrimaryPhoto(firstPhoto.id);
-      }
+      const uploadedItems = await Promise.all(uploadPromises);
+      setPhotos((prev) => [...prev, ...uploadedItems].slice(0, 6));
     } catch (err: any) {
       console.error(err);
       setError(err.message || 'Upload failed');
     } finally {
       setUploading(false);
+      // reset input so same file can be selected again if needed
       e.target.value = '';
     }
   };
 
-  // 🔹 Remove photo
+  const handleSetMain = async (photo: PhotoItem) => {
+    if (!user || !photo.id) return;
+
+    setError('');
+    setMainPhotoId(photo.id);
+
+    try {
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update({ profile_photo_id: photo.id }) // ✅ correct column name
+        .eq('id', user.id);
+
+      if (updateError) {
+        console.error('Error updating main photo', updateError);
+        setError('Could not set this photo as your main profile photo.');
+      }
+    } catch (e: any) {
+      console.error('Error updating main photo', e);
+      setError('Could not set this photo as your main profile photo.');
+    }
+  };
+
   const removePhoto = async (index: number) => {
     if (!user) return;
 
     const photo = photos[index];
     if (!photo) return;
+
     setError('');
 
     try {
+      // 1) Remove from Storage (derive path from URL)
       const path = extractPathFromUrl(photo.url);
       if (path) {
-        await supabase.storage.from('profile-media').remove([path]);
+        const { error: storageError } = await supabase.storage
+          .from('profile-media')
+          .remove([path]);
+        if (storageError) throw storageError;
       }
 
-      await supabase.from('media').delete().eq('id', photo.id);
-
-      // Remove from UI
-      const newList = photos.filter((_, i) => i !== index);
-      setPhotos(newList);
-
-      // If primary was deleted → pick new primary
-      if (photo.is_primary && newList.length > 0) {
-        await setPrimaryPhoto(newList[0].id);
+      // 2) Remove from media table
+      if (photo.id) {
+        const { error: dbError } = await supabase
+          .from('media')
+          .delete()
+          .eq('id', photo.id);
+        if (dbError) throw dbError;
+      } else {
+        // Fallback: delete by URL if we don't have id
+        const { error: dbError } = await supabase
+          .from('media')
+          .delete()
+          .eq('user_id', user.id)
+          .eq('url', photo.url);
+        if (dbError) throw dbError;
       }
 
-      // If no photos left → clear profile.profile_photo_id
-      if (newList.length === 0) {
+      // 3) If this was the main photo, clear profile_photo_id
+      if (photo.id && photo.id === mainPhotoId) {
+        setMainPhotoId(null);
         await supabase
           .from('profiles')
           .update({ profile_photo_id: null })
           .eq('id', user.id);
       }
+
+      // 4) Update local state
+      setPhotos((prev) => prev.filter((_, i) => i !== index));
     } catch (err: any) {
       console.error('Error removing photo', err);
-      setError(err.message || 'Could not remove photo.');
+      setError(err.message || 'Could not remove this photo. Please try again.');
     }
   };
 
@@ -227,6 +233,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
       setError('Please upload at least 2 photos');
       return;
     }
+    // Only send URLs back to the parent, like before
     onSubmit(photos.map((p) => p.url));
   };
 
@@ -241,7 +248,6 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
             Upload 2–6 photos that best represent you
           </p>
         </CardHeader>
-
         <CardContent className="space-y-6">
           {error && (
             <Alert variant="destructive">
@@ -251,57 +257,73 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
           )}
 
           <div className="grid grid-cols-3 gap-4">
-            {photos.map((p, index) => (
-              <div key={p.id} className="relative aspect-square">
-                <img
-                  src={p.url}
-                  className={`w-full h-full object-cover rounded-lg ${
-                    p.is_primary ? 'ring-4 ring-teal-500' : ''
-                  }`}
-                />
+            {[...Array(6)].map((_, index) => {
+              const photo = photos[index];
+              const isMain = photo?.id && photo.id === mainPhotoId;
 
-                {/* Remove */}
-                <button
-                  onClick={() => removePhoto(index)}
-                  className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"
-                >
-                  <X className="w-4 h-4" />
-                </button>
+              return (
+                <div key={index} className="aspect-square relative">
+                  {photo ? (
+                    <div className="relative w-full h-full">
+                      <img
+                        src={photo.url}
+                        alt={`Photo ${index + 1}`}
+                        className="w-full h-full object-cover rounded-lg"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void removePhoto(index)}
+                        className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
+                      >
+                        <X className="w-4 h-4" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => void handleSetMain(photo)}
+                        className={`absolute bottom-2 left-2 px-2 py-1 rounded text-xs flex items-center gap-1 ${
+                          isMain
+                            ? 'bg-emerald-600 text-white'
+                            : 'bg-black/60 text-white'
+                        }`}
+                      >
+                        <Star className="w-3 h-3" />
+                        {isMain ? 'Main Photo' : 'Set as Main'}
+                      </button>
+                    </div>
+                  ) : (
+                    <label className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-teal-500 transition-colors">
+                      <Camera className="w-8 h-8 text-gray-400 mb-2" />
+                      <span className="text-xs text-gray-500">
+                        {loadingExisting ? 'Loading...' : 'Add Photo'}
+                      </span>
+                      {!loadingExisting && (
+                        <input
+                          type="file"
+                          accept="image/*"
+                          multiple
+                          className="hidden"
+                          onChange={handleFileSelect}
+                          disabled={uploading || photos.length >= 6}
+                        />
+                      )}
+                    </label>
+                  )}
+                </div>
+              );
+            })}
+          </div>
 
-                {/* Set Primary */}
-                {!p.is_primary && (
-                  <button
-                    onClick={() => setPrimaryPhoto(p.id)}
-                    className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded"
-                  >
-                    Set as Main
-                  </button>
-                )}
-              </div>
-            ))}
-
-            {/* Empty slots */}
-            {[...Array(6 - photos.length)].map((_, i) => (
-              <label
-                key={i}
-                className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-teal-500"
-              >
-                <Camera className="w-8 h-8 text-gray-400 mb-2" />
-                <span className="text-xs text-gray-500">
-                  {loadingExisting ? 'Loading...' : 'Add Photo'}
-                </span>
-                {!loadingExisting && (
-                  <input
-                    type="file"
-                    accept="image/*"
-                    multiple
-                    className="hidden"
-                    onChange={handleFileSelect}
-                    disabled={uploading}
-                  />
-                )}
-              </label>
-            ))}
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <h4 className="font-semibold text-blue-900 mb-2">
+              Photo Guidelines:
+            </h4>
+            <ul className="text-sm text-blue-800 space-y-1">
+              <li>• Use recent photos (within the last year)</li>
+              <li>• Show your face clearly in at least one photo</li>
+              <li>• Dress modestly according to Islamic guidelines</li>
+              <li>• Avoid group photos as your main photo</li>
+              <li>• No filters that significantly alter appearance</li>
+            </ul>
           </div>
 
           <div className="flex gap-3">
@@ -315,7 +337,8 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
             >
               {uploading ? (
                 <>
-                  <Upload className="w-4 h-4 mr-2 animate-spin" /> Uploading...
+                  <Upload className="w-4 h-4 mr-2 animate-spin" />
+                  Uploading...
                 </>
               ) : (
                 'Continue'
@@ -328,6 +351,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   );
 };
 
+// /* eslint-disable prefer-const */
 // /* eslint-disable @typescript-eslint/no-explicit-any */
 // import React, { useEffect, useState } from 'react';
 // import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -343,8 +367,9 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 // }
 
 // type PhotoItem = {
-//   id?: string;
+//   id: string;
 //   url: string;
+//   is_primary?: boolean;
 // };
 
 // export const PhotoUpload: React.FC<PhotoUploadProps> = ({
@@ -357,7 +382,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //   const [error, setError] = useState('');
 //   const { user } = useAuth();
 
-//   // Helper: from public URL → storage object path (after /profile-media/)
+//   // Helper: derive storage path from URL
 //   const extractPathFromUrl = (url: string): string | null => {
 //     const marker = '/profile-media/';
 //     const idx = url.indexOf(marker);
@@ -365,7 +390,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //     return url.substring(idx + marker.length);
 //   };
 
-//   // 🔹 Load existing photos from media table on mount
+//   // 🔹 Load existing photos (including primary) on mount
 //   useEffect(() => {
 //     if (!user) return;
 
@@ -375,7 +400,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 
 //       const { data, error } = await supabase
 //         .from('media')
-//         .select('id, url')
+//         .select('id, url, is_primary')
 //         .eq('user_id', user.id)
 //         .eq('type', 'photo')
 //         .in('status', ['pending', 'approved'])
@@ -385,12 +410,11 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //         console.error('Error loading existing photos', error);
 //         setError('Could not load your existing photos. Please try again.');
 //       } else if (data) {
-//         const items: PhotoItem[] = data
-//           .filter((row: any) => !!row.url)
-//           .map((row: any) => ({
-//             id: row.id,
-//             url: row.url,
-//           }));
+//         const items: PhotoItem[] = data.map((row: any) => ({
+//           id: row.id,
+//           url: row.url,
+//           is_primary: row.is_primary,
+//         }));
 //         setPhotos(items.slice(0, 6));
 //       }
 
@@ -398,6 +422,45 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //     })();
 //   }, [user]);
 
+//   // 🔹 Mark a specific photo as primary
+//   const setPrimaryPhoto = async (mediaId: string) => {
+//     if (!user) return;
+
+//     try {
+//       // 1. Unset existing primary
+//       await supabase
+//         .from('media')
+//         .update({ is_primary: false })
+//         .eq('user_id', user.id)
+//         .eq('type', 'photo')
+//         .eq('is_primary', true);
+
+//       // 2. Set new primary
+//       await supabase
+//         .from('media')
+//         .update({ is_primary: true })
+//         .eq('id', mediaId);
+
+//       // 3. Update profile.profile_photo_id
+//       await supabase
+//         .from('profiles')
+//         .update({ profile_photo_id: mediaId })
+//         .eq('id', user.id);
+
+//       // 4. Update frontend
+//       setPhotos((prev) =>
+//         prev.map((p) =>
+//           p.id === mediaId
+//             ? { ...p, is_primary: true }
+//             : { ...p, is_primary: false }
+//         )
+//       );
+//     } catch (err) {
+//       console.error('Error setting primary photo:', err);
+//     }
+//   };
+
+//   // 🔹 Upload photos
 //   const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
 //     const files = e.target.files;
 //     if (!files || !user) return;
@@ -415,12 +478,12 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //           throw new Error('Image size should be less than 5MB');
 //         }
 
-//         const fileExt = file.name.split('.').pop();
+//         const ext = file.name.split('.').pop();
 //         const storagePath = `${user.id}/${Date.now()}-${Math.random()
 //           .toString(36)
-//           .slice(2)}.${fileExt}`;
+//           .slice(2)}.${ext}`;
 
-//         // ✅ upload to profile-media bucket
+//         // Upload to storage
 //         const { error: uploadError } = await supabase.storage
 //           .from('profile-media')
 //           .upload(storagePath, file);
@@ -431,80 +494,84 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //           data: { publicUrl },
 //         } = supabase.storage.from('profile-media').getPublicUrl(storagePath);
 
-//         // ✅ record in media table
+//         // Insert into media
 //         const { data: inserted, error: dbError } = await supabase
 //           .from('media')
 //           .insert({
 //             user_id: user.id,
 //             type: 'photo',
 //             url: publicUrl,
-//             status: 'approved', // or 'pending' if you have moderation
+//             is_primary: false, // temporary
+//             status: 'approved',
 //           })
-//           .select('id, url')
+//           .select('id, url, is_primary')
 //           .maybeSingle();
 
 //         if (dbError) throw dbError;
 
-//         const item: PhotoItem = {
-//           id: inserted?.id,
-//           url: inserted?.url ?? publicUrl,
-//         };
-
-//         return item;
+//         return {
+//           id: inserted.id,
+//           url: inserted.url,
+//           is_primary: inserted.is_primary,
+//         } as PhotoItem;
 //       });
 
-//       const uploadedItems = await Promise.all(uploadPromises);
-//       setPhotos((prev) => [...prev, ...uploadedItems].slice(0, 6));
+//       const uploaded = await Promise.all(uploadPromises);
+
+//       let updatedList = [...photos, ...uploaded].slice(0, 6);
+//       setPhotos(updatedList);
+
+//       // ⭐ AUTO-SET FIRST PHOTO AS PRIMARY
+//       const hasPrimary = updatedList.some((p) => p.is_primary);
+
+//       if (!hasPrimary && updatedList.length > 0) {
+//         const firstPhoto = updatedList[0];
+//         await setPrimaryPhoto(firstPhoto.id);
+//       }
 //     } catch (err: any) {
 //       console.error(err);
 //       setError(err.message || 'Upload failed');
 //     } finally {
 //       setUploading(false);
-//       // reset input so same file can be selected again if needed
 //       e.target.value = '';
 //     }
 //   };
 
+//   // 🔹 Remove photo
 //   const removePhoto = async (index: number) => {
 //     if (!user) return;
 
 //     const photo = photos[index];
 //     if (!photo) return;
-
 //     setError('');
 
 //     try {
-//       // 1) Remove from Storage (derive path from URL)
 //       const path = extractPathFromUrl(photo.url);
 //       if (path) {
-//         const { error: storageError } = await supabase.storage
-//           .from('profile-media')
-//           .remove([path]);
-//         if (storageError) throw storageError;
+//         await supabase.storage.from('profile-media').remove([path]);
 //       }
 
-//       // 2) Remove from media table
-//       if (photo.id) {
-//         const { error: dbError } = await supabase
-//           .from('media')
-//           .delete()
-//           .eq('id', photo.id);
-//         if (dbError) throw dbError;
-//       } else {
-//         // Fallback: delete by URL if we don't have id
-//         const { error: dbError } = await supabase
-//           .from('media')
-//           .delete()
-//           .eq('user_id', user.id)
-//           .eq('url', photo.url);
-//         if (dbError) throw dbError;
+//       await supabase.from('media').delete().eq('id', photo.id);
+
+//       // Remove from UI
+//       const newList = photos.filter((_, i) => i !== index);
+//       setPhotos(newList);
+
+//       // If primary was deleted → pick new primary
+//       if (photo.is_primary && newList.length > 0) {
+//         await setPrimaryPhoto(newList[0].id);
 //       }
 
-//       // 3) Update local state
-//       setPhotos((prev) => prev.filter((_, i) => i !== index));
+//       // If no photos left → clear profile.profile_photo_id
+//       if (newList.length === 0) {
+//         await supabase
+//           .from('profiles')
+//           .update({ profile_photo_id: null })
+//           .eq('id', user.id);
+//       }
 //     } catch (err: any) {
 //       console.error('Error removing photo', err);
-//       setError(err.message || 'Could not remove this photo. Please try again.');
+//       setError(err.message || 'Could not remove photo.');
 //     }
 //   };
 
@@ -513,7 +580,6 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //       setError('Please upload at least 2 photos');
 //       return;
 //     }
-//     // Only send URLs back to the parent, like before
 //     onSubmit(photos.map((p) => p.url));
 //   };
 
@@ -525,9 +591,10 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //         <CardHeader>
 //           <CardTitle className="text-2xl">Add Your Photos</CardTitle>
 //           <p className="text-gray-600">
-//             Upload 2-6 photos that best represent you
+//             Upload 2–6 photos that best represent you
 //           </p>
 //         </CardHeader>
+
 //         <CardContent className="space-y-6">
 //           {error && (
 //             <Alert variant="destructive">
@@ -537,56 +604,57 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //           )}
 
 //           <div className="grid grid-cols-3 gap-4">
-//             {[...Array(6)].map((_, index) => (
-//               <div key={index} className="aspect-square relative">
-//                 {photos[index] ? (
-//                   <div className="relative w-full h-full">
-//                     <img
-//                       src={photos[index].url}
-//                       alt={`Photo ${index + 1}`}
-//                       className="w-full h-full object-cover rounded-lg"
-//                     />
-//                     <button
-//                       type="button"
-//                       onClick={() => void removePhoto(index)}
-//                       className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600"
-//                     >
-//                       <X className="w-4 h-4" />
-//                     </button>
-//                   </div>
-//                 ) : (
-//                   <label className="w-full h-full border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-teal-500 transition-colors">
-//                     <Camera className="w-8 h-8 text-gray-400 mb-2" />
-//                     <span className="text-xs text-gray-500">
-//                       {loadingExisting ? 'Loading...' : 'Add Photo'}
-//                     </span>
-//                     {!loadingExisting && (
-//                       <input
-//                         type="file"
-//                         accept="image/*"
-//                         multiple
-//                         className="hidden"
-//                         onChange={handleFileSelect}
-//                         disabled={uploading || photos.length >= 6}
-//                       />
-//                     )}
-//                   </label>
+//             {photos.map((p, index) => (
+//               <div key={p.id} className="relative aspect-square">
+//                 <img
+//                   src={p.url}
+//                   className={`w-full h-full object-cover rounded-lg ${
+//                     p.is_primary ? 'ring-4 ring-teal-500' : ''
+//                   }`}
+//                 />
+
+//                 {/* Remove */}
+//                 <button
+//                   onClick={() => removePhoto(index)}
+//                   className="absolute top-2 right-2 bg-red-500 text-white p-1 rounded-full"
+//                 >
+//                   <X className="w-4 h-4" />
+//                 </button>
+
+//                 {/* Set Primary */}
+//                 {!p.is_primary && (
+//                   <button
+//                     onClick={() => setPrimaryPhoto(p.id)}
+//                     className="absolute bottom-2 left-2 bg-black/50 text-white text-xs px-2 py-1 rounded"
+//                   >
+//                     Set as Main
+//                   </button>
 //                 )}
 //               </div>
 //             ))}
-//           </div>
 
-//           <div className="bg-blue-50 p-4 rounded-lg">
-//             <h4 className="font-semibold text-blue-900 mb-2">
-//               Photo Guidelines:
-//             </h4>
-//             <ul className="text-sm text-blue-800 space-y-1">
-//               <li>• Use recent photos (within the last year)</li>
-//               <li>• Show your face clearly in at least one photo</li>
-//               <li>• Dress modestly according to Islamic guidelines</li>
-//               <li>• Avoid group photos as your main photo</li>
-//               <li>• No filters that significantly alter appearance</li>
-//             </ul>
+//             {/* Empty slots */}
+//             {[...Array(6 - photos.length)].map((_, i) => (
+//               <label
+//                 key={i}
+//                 className="aspect-square border-2 border-dashed border-gray-300 rounded-lg flex flex-col items-center justify-center cursor-pointer hover:border-teal-500"
+//               >
+//                 <Camera className="w-8 h-8 text-gray-400 mb-2" />
+//                 <span className="text-xs text-gray-500">
+//                   {loadingExisting ? 'Loading...' : 'Add Photo'}
+//                 </span>
+//                 {!loadingExisting && (
+//                   <input
+//                     type="file"
+//                     accept="image/*"
+//                     multiple
+//                     className="hidden"
+//                     onChange={handleFileSelect}
+//                     disabled={uploading}
+//                   />
+//                 )}
+//               </label>
+//             ))}
 //           </div>
 
 //           <div className="flex gap-3">
@@ -600,8 +668,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 //             >
 //               {uploading ? (
 //                 <>
-//                   <Upload className="w-4 h-4 mr-2 animate-spin" />
-//                   Uploading...
+//                   <Upload className="w-4 h-4 mr-2 animate-spin" /> Uploading...
 //                 </>
 //               ) : (
 //                 'Continue'
