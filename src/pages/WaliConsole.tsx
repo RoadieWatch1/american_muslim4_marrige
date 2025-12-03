@@ -5,79 +5,128 @@ import { WaliLink, IntroRequest } from '@/types/wali';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
 import { Switch } from '@/components/ui/switch';
-import { Textarea } from '@/components/ui/textarea';
 import { useToast } from '@/hooks/use-toast';
-import { Mail, UserCheck, UserX, Clock, Shield, Eye, EyeOff } from 'lucide-react';
+import {
+  Mail,
+  UserCheck,
+  UserX,
+  Clock,
+  Shield,
+  Eye,
+  EyeOff,
+} from 'lucide-react';
+
+type ProfileSummary = {
+  id: string;
+  first_name: string | null;
+  last_name: string | null;
+  city: string | null;
+  occupation: string | null;
+  email?: string | null;
+};
+
+type IntroRequestWithProfile = IntroRequest & {
+  from_profile?: ProfileSummary | null;
+};
 
 export default function WaliConsole() {
   const { user } = useAuth();
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [waliLinks, setWaliLinks] = useState<WaliLink[]>([]);
-  const [introRequests, setIntroRequests] = useState<IntroRequest[]>([]);
+  const [introRequests, setIntroRequests] = useState<IntroRequestWithProfile[]>(
+    [],
+  );
   const [requireWaliApproval, setRequireWaliApproval] = useState(false);
-  
-  // Invite wali form
+
   const [waliEmail, setWaliEmail] = useState('');
   const [waliName, setWaliName] = useState('');
   const [waliPhone, setWaliPhone] = useState('');
   const [inviting, setInviting] = useState(false);
 
   useEffect(() => {
-    if (user) {
-      loadData();
-    }
+    if (user) void loadData();
   }, [user]);
 
   const loadData = async () => {
+    if (!user) return;
+
     try {
       setLoading(true);
-      
-      // Load wali links
+
+      // 1) wali links for this ward
       const { data: links, error: linksError } = await supabase
         .from('wali_links')
         .select('*')
-        .eq('woman_id', user?.id)
+        .eq('ward_user_id', user.id)
         .order('created_at', { ascending: false });
 
       if (linksError) throw linksError;
       setWaliLinks(links || []);
 
-      // Load intro requests
-      const { data: requests, error: requestsError } = await supabase
+      // 2) intro requests sent TO this user
+      const { data: rawRequests, error: requestsError } = await supabase
         .from('intro_requests')
-        .select(`
-          *,
-          requester_profile:profiles!intro_requests_requester_id_fkey(
-            first_name,
-            last_name,
-            age,
-            city,
-            occupation
-          )
-        `)
-        .eq('recipient_id', user?.id)
+        .select('*')
+        .eq('to_user_id', user.id)
         .eq('status', 'pending')
         .order('created_at', { ascending: false });
 
       if (requestsError) throw requestsError;
-      setIntroRequests(requests || []);
 
-      // Load wali approval setting from profile
-      const { data: profile } = await supabase
+      let enrichedRequests: IntroRequestWithProfile[] = rawRequests || [];
+
+      if (rawRequests && rawRequests.length > 0) {
+        const fromIds = Array.from(
+          new Set(rawRequests.map((r) => r.from_user_id)),
+        );
+
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select(
+            'id, first_name, last_name, city, occupation',
+          )
+          .in('id', fromIds);
+
+        if (profilesError) throw profilesError;
+
+        const map = new Map<string, ProfileSummary>();
+        (profiles || []).forEach((p: any) => map.set(p.id, p));
+
+        enrichedRequests = rawRequests.map((r) => ({
+          ...r,
+          from_profile: map.get(r.from_user_id) || null,
+        }));
+      }
+
+      setIntroRequests(enrichedRequests);
+
+      // 3) wali setting from profile (use your real column name)
+      const { data: profile, error: profileError } = await supabase
         .from('profiles')
-        .select('require_wali_approval')
-        .eq('id', user?.id)
+        .select('wali_required')
+        .eq('id', user.id)
         .single();
 
-      if (profile) {
-        setRequireWaliApproval(profile.require_wali_approval || false);
+      if (!profileError && profile) {
+        setRequireWaliApproval(profile.wali_required ?? false);
       }
     } catch (error: any) {
-      console.error('Error loading data:', error);
+      console.error('Error loading wali console data:', error);
+      toast({
+        title: 'Error',
+        description: 'Could not load wali data. Please try again.',
+        variant: 'destructive',
+      });
     } finally {
       setLoading(false);
     }
@@ -89,44 +138,40 @@ export default function WaliConsole() {
 
     try {
       setInviting(true);
-      
-      // Get woman's profile name
+
       const { data: profile } = await supabase
         .from('profiles')
         .select('first_name, last_name')
         .eq('id', user.id)
         .single();
 
-      const { error } = await supabase
-        .from('wali_links')
-        .insert({
-          woman_id: user.id,
-          wali_email: waliEmail,
-          wali_name: waliName || null,
-          wali_phone: waliPhone || null,
-          status: 'pending'
-        });
+      const { error } = await supabase.from('wali_links').insert({
+        ward_user_id: user.id,
+        wali_email: waliEmail,
+        wali_name: waliName || null,
+        wali_phone: waliPhone || null,
+        status: 'invited',
+      });
 
       if (error) throw error;
 
-      // Send email notification to wali (no recipientUserId since wali might not be a user yet)
       try {
         await supabase.functions.invoke('send-notification-email', {
           body: {
             type: 'wali_invitation',
             to: waliEmail,
             data: {
-              womanName: `${profile?.first_name || ''} ${profile?.last_name || ''}`.trim(),
+              womanName: `${profile?.first_name || ''} ${
+                profile?.last_name || ''
+              }`.trim(),
               waliName: waliName || 'Guardian',
-              loginUrl: `${window.location.origin}/wali-console`
-            }
-          }
+              loginUrl: `${window.location.origin}/wali-console`,
+            },
+          },
         });
       } catch (emailError) {
-        console.error('Failed to send email:', emailError);
-        // Don't fail the whole operation if email fails
+        console.error('Failed to send wali invitation email:', emailError);
       }
-
 
       toast({
         title: 'Wali Invited',
@@ -136,7 +181,7 @@ export default function WaliConsole() {
       setWaliEmail('');
       setWaliName('');
       setWaliPhone('');
-      loadData();
+      void loadData();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -148,21 +193,22 @@ export default function WaliConsole() {
     }
   };
 
-
   const handleToggleWaliApproval = async (checked: boolean) => {
+    if (!user) return;
+
     try {
       const { error } = await supabase
         .from('profiles')
-        .update({ require_wali_approval: checked })
-        .eq('id', user?.id);
+        .update({ wali_required: checked })
+        .eq('id', user.id);
 
       if (error) throw error;
 
       setRequireWaliApproval(checked);
       toast({
         title: checked ? 'Wali Approval Required' : 'Wali Approval Optional',
-        description: checked 
-          ? 'All intro requests will now require wali approval.' 
+        description: checked
+          ? 'All intro requests will now require wali approval.'
           : 'Intro requests no longer require wali approval.',
       });
     } catch (error: any) {
@@ -174,76 +220,111 @@ export default function WaliConsole() {
     }
   };
 
-  const handleApproveRequest = async (requestId: string, approved: boolean, notes?: string) => {
+  const handleApproveRequest = async (
+    requestId: string,
+    approved: boolean,
+  ) => {
+    if (!user) return;
+
     try {
-      // Get the intro request details first
-      const { data: request } = await supabase
+      // get request
+      const { data: request, error: reqError } = await supabase
         .from('intro_requests')
-        .select(`
-          *,
-          requester_profile:profiles!intro_requests_requester_id_fkey(first_name, last_name, email),
-          recipient_profile:profiles!intro_requests_recipient_id_fkey(first_name, last_name, email)
-        `)
+        .select('*')
         .eq('id', requestId)
         .single();
 
+      if (reqError) throw reqError;
+
+      // update status
       const { error } = await supabase
         .from('intro_requests')
         .update({
-          wali_approved: approved,
-          wali_notes: notes || null,
+          wali_id: user.id,
           status: approved ? 'approved' : 'rejected',
-          updated_at: new Date().toISOString()
+          updated_at: new Date().toISOString(),
         })
         .eq('id', requestId);
 
       if (error) throw error;
 
-      // Send email notifications
-      if (request) {
-        try {
-          // Notify the woman with her user ID for preference checking
+      // (Optional) load profiles for emails
+      let fromProfileEmail: string | null = null;
+      let toProfileEmail: string | null = null;
+      let fromName = '';
+      let toName = '';
+
+      const { data: fromProfile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, email')
+        .eq('id', request.from_user_id)
+        .single();
+
+      const { data: toProfile } = await supabase
+        .from('profiles')
+        .select('first_name, last_name, email')
+        .eq('id', request.to_user_id)
+        .single();
+
+      if (fromProfile) {
+        fromProfileEmail = fromProfile.email;
+        fromName = `${fromProfile.first_name || ''} ${
+          fromProfile.last_name || ''
+        }`.trim();
+      }
+      if (toProfile) {
+        toProfileEmail = toProfile.email;
+        toName = `${toProfile.first_name || ''} ${
+          toProfile.last_name || ''
+        }`.trim();
+      }
+
+      try {
+        if (toProfileEmail) {
           await supabase.functions.invoke('send-notification-email', {
             body: {
               type: approved ? 'match' : 'intro_request',
-              to: request.recipient_profile?.email,
-              recipientUserId: request.recipient_id,
+              to: toProfileEmail,
+              recipientUserId: request.to_user_id,
               data: {
-                matchName: approved ? `${request.requester_profile?.first_name} ${request.requester_profile?.last_name}` : '',
-                message: approved ? 'Your wali has approved this introduction request.' : 'Your wali has reviewed an introduction request.',
-                loginUrl: `${window.location.origin}/messages`
-              }
-            }
+                matchName: approved ? fromName : '',
+                message: approved
+                  ? 'Your wali has approved this introduction request.'
+                  : 'Your wali has reviewed an introduction request.',
+                loginUrl: `${window.location.origin}/messages`,
+              },
+            },
           });
-
-
-          // Notify the requester with their user ID for preference checking
-          await supabase.functions.invoke('send-notification-email', {
-            body: {
-              type: approved ? 'match' : 'intro_request',
-              to: request.requester_profile?.email,
-              recipientUserId: request.requester_id,
-              data: {
-                matchName: approved ? `${request.recipient_profile?.first_name} ${request.recipient_profile?.last_name}` : '',
-                message: approved ? 'Your introduction request has been approved!' : 'Your introduction request has been reviewed.',
-                loginUrl: `${window.location.origin}/messages`
-              }
-            }
-          });
-
-        } catch (emailError) {
-          console.error('Failed to send notification emails:', emailError);
         }
+
+        if (fromProfileEmail) {
+          await supabase.functions.invoke('send-notification-email', {
+            body: {
+              type: approved ? 'match' : 'intro_request',
+              to: fromProfileEmail,
+              recipientUserId: request.from_user_id,
+              data: {
+                matchName: approved ? toName : '',
+                message: approved
+                  ? 'Your introduction request has been approved!'
+                  : 'Your introduction request has been reviewed.',
+                loginUrl: `${window.location.origin}/messages`,
+              },
+            },
+          });
+        }
+      } catch (emailError) {
+        console.error('Failed to send notification emails:', emailError);
       }
 
       toast({
         title: approved ? 'Request Approved' : 'Request Rejected',
-        description: approved 
-          ? 'The introduction request has been approved.' 
+        description: approved
+          ? 'The introduction request has been approved.'
           : 'The introduction request has been rejected.',
       });
 
-      loadData();
+      void loadData();
     } catch (error: any) {
       toast({
         title: 'Error',
@@ -253,12 +334,11 @@ export default function WaliConsole() {
     }
   };
 
-
   if (loading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-emerald-600 mx-auto" />
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -274,7 +354,7 @@ export default function WaliConsole() {
             Wali Console
           </h1>
           <p className="mt-2 text-gray-600">
-            Manage your guardian's involvement in your marriage search
+            Manage your guardian&apos;s involvement in your marriage search
           </p>
         </div>
 
@@ -287,7 +367,8 @@ export default function WaliConsole() {
                 Invite Your Wali
               </CardTitle>
               <CardDescription>
-                Send an invitation to your guardian to oversee your marriage search
+                Send an invitation to your guardian to oversee your marriage
+                search
               </CardDescription>
             </CardHeader>
             <CardContent>
@@ -348,7 +429,8 @@ export default function WaliConsole() {
                 <div className="space-y-0.5">
                   <Label>Require Wali Approval</Label>
                   <p className="text-sm text-gray-500">
-                    All intro requests will need wali approval before proceeding
+                    All intro requests will need wali approval before
+                    proceeding
                   </p>
                 </div>
                 <Switch
@@ -381,24 +463,36 @@ export default function WaliConsole() {
                     className="flex items-center justify-between p-4 border rounded-lg"
                   >
                     <div>
-                      <p className="font-medium">{link.wali_name || 'Unnamed Wali'}</p>
-                      <p className="text-sm text-gray-600">{link.wali_email}</p>
+                      <p className="font-medium">
+                        {link.wali_name || 'Unnamed Wali'}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {link.wali_email}
+                      </p>
                       {link.wali_phone && (
-                        <p className="text-sm text-gray-500">{link.wali_phone}</p>
+                        <p className="text-sm text-gray-500">
+                          {link.wali_phone}
+                        </p>
                       )}
                     </div>
                     <Badge
                       variant={
-                        link.status === 'approved'
+                        link.status === 'active'
                           ? 'default'
-                          : link.status === 'pending'
+                          : link.status === 'invited'
                           ? 'secondary'
                           : 'destructive'
                       }
                     >
-                      {link.status === 'approved' && <UserCheck className="h-3 w-3 mr-1" />}
-                      {link.status === 'pending' && <Clock className="h-3 w-3 mr-1" />}
-                      {link.status === 'rejected' && <UserX className="h-3 w-3 mr-1" />}
+                      {link.status === 'active' && (
+                        <UserCheck className="h-3 w-3 mr-1" />
+                      )}
+                      {link.status === 'invited' && (
+                        <Clock className="h-3 w-3 mr-1" />
+                      )}
+                      {link.status === 'removed' && (
+                        <UserX className="h-3 w-3 mr-1" />
+                      )}
                       {link.status}
                     </Badge>
                   </div>
@@ -408,7 +502,7 @@ export default function WaliConsole() {
           </CardContent>
         </Card>
 
-        {/* Intro Requests Needing Approval */}
+        {/* Intro Requests Needing Wali Approval */}
         {requireWaliApproval && introRequests.length > 0 && (
           <Card className="mt-6">
             <CardHeader>
@@ -420,27 +514,32 @@ export default function WaliConsole() {
             <CardContent>
               <div className="space-y-4">
                 {introRequests.map((request) => (
-                  <div key={request.id} className="p-4 border rounded-lg space-y-3">
+                  <div
+                    key={request.id}
+                    className="p-4 border rounded-lg space-y-3"
+                  >
                     <div>
                       <p className="font-medium">
-                        {request.requester_profile?.first_name}{' '}
-                        {request.requester_profile?.last_name}
+                        {request.from_profile?.first_name}{' '}
+                        {request.from_profile?.last_name}
                       </p>
                       <p className="text-sm text-gray-600">
-                        {request.requester_profile?.age} years old •{' '}
-                        {request.requester_profile?.city} •{' '}
-                        {request.requester_profile?.occupation}
+                        {request.from_profile?.city}{' '}
+                        {request.from_profile?.occupation &&
+                          `• ${request.from_profile.occupation}`}
                       </p>
                       {request.message && (
                         <p className="text-sm text-gray-700 mt-2 italic">
-                          "{request.message}"
+                          &quot;{request.message}&quot;
                         </p>
                       )}
                     </div>
                     <div className="flex gap-2">
                       <Button
                         size="sm"
-                        onClick={() => handleApproveRequest(request.id, true)}
+                        onClick={() =>
+                          handleApproveRequest(request.id, true)
+                        }
                         className="flex-1"
                       >
                         <UserCheck className="h-4 w-4 mr-1" />
@@ -449,7 +548,9 @@ export default function WaliConsole() {
                       <Button
                         size="sm"
                         variant="destructive"
-                        onClick={() => handleApproveRequest(request.id, false)}
+                        onClick={() =>
+                          handleApproveRequest(request.id, false)
+                        }
                         className="flex-1"
                       >
                         <UserX className="h-4 w-4 mr-1" />

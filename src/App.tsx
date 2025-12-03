@@ -22,6 +22,8 @@ import ResetPassword from "./pages/ResetPassword";
 import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
 import AuthCallback from "./pages/AuthCallback";
+import IntroRequests from "./pages/IntroRequests";
+import WaliInvite from "./pages/WaliInvite";
 
 
 const queryClient = new QueryClient();
@@ -39,6 +41,8 @@ const App = () => (
               <Route path="/onboarding" element={<Onboarding />} />
               <Route path="/dashboard" element={<Dashboard />} />
               <Route path="/discover" element={<Discover />} />
+              <Route path="/intro-requests" element={<IntroRequests />} />
+              <Route path="/wali-invite" element={<WaliInvite />} />
               <Route path="/messages" element={<Messages />} />
               <Route path="/profile" element={<Profile />} />
               <Route path="/wali-console" element={<WaliConsole />} />
