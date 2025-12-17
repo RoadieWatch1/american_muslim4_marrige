@@ -44,24 +44,51 @@ const App = () => (
             <Sonner />
             <BrowserRouter>
               <Routes>
-                <Route path="/" element={<Index />} />
+              {/* Public routes */}
+              <Route path="/" element={<Index />} />
+              <Route path="/auth/callback" element={<AuthCallback />} />
+              <Route path="/verify-email" element={<VerifyEmail />} />
+              <Route path="/reset-password" element={<ResetPassword />} />
+
+              {/* Wali invite is special: can be visited before login */}
+              <Route path="/wali-invite" element={<WaliInvite />} />
+
+              {/* Protected routes (must be logged in) */}
+              <Route element={<ProtectedRoute />}>
+                {/* Onboarding: keep OUTSIDE dashboard layout */}
                 <Route path="/onboarding" element={<Onboarding />} />
-                <Route path="/dashboard" element={<Dashboard />} />
-                <Route path="/discover" element={<Discover />} />
-                <Route path="/intro-requests" element={<IntroRequests />} />
-                <Route path="/wali-invite" element={<WaliInvite />} />
-                <Route path="/messages" element={<Messages />} />
-                <Route path="/profile" element={<Profile />} />
-                <Route path="/wali-console" element={<WaliConsole />} />
-                <Route path="/wali-guardian" element={<WaliGuardianConsole />} />
-                <Route path="/settings" element={<Settings />} />
-                <Route path="/admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-                <Route path="/verify-email" element={<VerifyEmail />} />
-                <Route path="/reset-password" element={<ResetPassword />} />
-                <Route path="/auth/callback" element={<AuthCallback />} />
-                <Route path="/analytics" element={<Analytics />} />
-                <Route path="*" element={<NotFound />} />
-              </Routes>          
+
+                {/* Everything else: wrapped with DashboardLayout */}
+                <Route element={<DashboardLayout />}>
+                  <Route path="/dashboard" element={<Dashboard />} />
+                  <Route path="/discover" element={<Discover />} />
+                  <Route path="/intro-requests" element={<IntroRequests />} />
+                  <Route path="/messages" element={<Messages />} />
+                  <Route path="/profile" element={<Profile />} />
+                  <Route path="/wali-console" element={<WaliConsole />} />
+                  <Route path="/pricing" element={<SubscriptionUpgradePage />} />
+                  <Route
+                    path="/wali-guardian"
+                    element={<WaliGuardianConsole />}
+                  />
+                  <Route path="/settings" element={<Settings />} />
+                  <Route path="/analytics" element={<Analytics />} />
+
+                  {/* Admin area also behind ProtectedRoute + AdminRoute */}
+                  <Route
+                    path="/admin"
+                    element={
+                      <AdminRoute>
+                        <AdminDashboard />
+                      </AdminRoute>
+                    }
+                  />
+                </Route>
+              </Route>
+
+              {/* 404 */}
+              <Route path="*" element={<NotFound />} />
+            </Routes>         
             </BrowserRouter>
           </TooltipProvider>
         </AuthProvider>
