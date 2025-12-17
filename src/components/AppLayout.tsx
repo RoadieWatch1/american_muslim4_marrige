@@ -16,7 +16,8 @@ import { Footer } from './Footer';
 
 const AppLayout: React.FC = () => {
   return (
-    <div className="min-h-screen bg-white">
+    // FIX: The 'bg-white' class has been removed. This div will now inherit the 'bg-background' color from App.tsx.
+    <div className="min-h-screen"> 
       <Navigation />
       <main className="pt-16">
         <Hero />
@@ -44,4 +45,3 @@ const AppLayout: React.FC = () => {
 };
 
 export default AppLayout;
-

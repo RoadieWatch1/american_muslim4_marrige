@@ -1,4 +1,3 @@
-
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap');
 
 @tailwind base;
@@ -7,106 +6,118 @@
 
 @layer base {
   :root {
-    --background: 210 40% 98%;
-    --foreground: 222.2 84% 4.9%;
+    /* ===============================
+       LIGHT MODE — AM4M IMAGE THEME (Beige)
+       =============================== */
 
-    --card: 0 0% 100%;
-    --card-foreground: 222.2 84% 4.9%;
+    /* 1. Base Background (Light Tan/Beige: #EDE8E0) */
+    --background: 35 22% 90%;
+    /* 2. Light Surfaces (Pricing Cards: #F7F2E8) */
+    --card: 35 48% 94%;
+    --popover: 35 48% 94%;
+    --secondary: 35 48% 94%; /* Same as card/popover */
 
-    --popover: 0 0% 100%;
-    --popover-foreground: 222.2 84% 4.9%;
+    /* 3. Primary Text & Dark Surfaces (Dark Muted Brown/Black) */
+    --foreground: 30 10% 15%;
+    --card-foreground: 30 10% 15%;
+    --popover-foreground: 30 10% 15%;
+    --secondary-foreground: 30 10% 15%;
 
-    --primary: 221 83% 53%;
-    --primary-foreground: 210 40% 98%;
+    /* 4. Primary CTA / Feature Cards (Muted Army Green) */
+    --primary: 110 15% 35%; 
+    /* Primary Text on Deep Olive (White) */
+    --primary-foreground: 0 0% 100%;
 
-    --secondary: 210 40% 96.1%;
-    --secondary-foreground: 222.2 47.4% 11.2%;
+    /* 5. Gold Accent / Logo / Ring (Warm Muted Gold) */
+    --accent: 35 55% 60%; 
+    --accent-foreground: 30 10% 15%; /* Text on gold */
+    --ring: 35 55% 60%;
 
-    --muted: 210 40% 96.1%;
-    --muted-foreground: 215.4 16.3% 46.9%;
+    /* Muted (For secondary text/less important details, slightly darker beige) */
+    --muted: 30 15% 80%;
+    --muted-foreground: 45 5% 50%; /* Darker gray text */
 
-    --accent: 210 40% 96.1%;
-    --accent-foreground: 222.2 47.4% 11.2%;
-
-    --destructive: 0 84.2% 60.2%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 214.3 31.8% 91.4%;
-    --input: 214.3 31.8% 91.4%;
-    --ring: 221 83% 53%;
+    /* System */
+    --border: 110 15% 35%; /* Muted Army Green */
+    --input: 110 15% 35%; 
+    
+    --destructive: 0 70% 45%;
+    --destructive-foreground: 0 0% 100%;
 
     --radius: 0.5rem;
-
-    --sidebar-background: 220 23% 95%;
-    --sidebar-foreground: 215 25% 27%;
-    --sidebar-primary: 221 83% 53%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 220 14% 90%;
-    --sidebar-accent-foreground: 215 25% 27%;
-    --sidebar-border: 220 13% 91%;
-    --sidebar-ring: 221 83% 53%;
   }
 
+  /* =========================================
+     DARK MODE — (Matching Dark Banner in Screenshot)
+     ========================================= */
   .dark {
-    --background: 222.2 84% 4.9%;
-    --foreground: 210 40% 98%;
+    /* Backgrounds: Dark Muted Brown/Black (Matches Top Banner) */
+    --background: 30 10% 15%; 
+    /* Cards: Slightly lighter dark surface */
+    --card: 30 10% 20%;
+    --popover: 30 10% 20%;
 
-    --card: 222.2 84% 4.9%;
-    --card-foreground: 210 40% 98%;
+    /* Text: Off-White Cream */
+    --foreground: 35 48% 98%;
+    --card-foreground: 35 48% 98%;
+    --popover-foreground: 35 48% 98%;
+    /* Lighter Gold for secondary text */
+    --muted-foreground: 35 50% 80%;
+    /* Muted Background (Slightly Darker background) */
+    --muted: 30 10% 12%;
 
-    --popover: 222.2 84% 4.9%;
-    --popover-foreground: 210 40% 98%;
+    /* Primary CTA: Muted Army Green */
+    --primary: 110 15% 35%;
+    --primary-foreground: 35 48% 98%; /* Off-White Cream */
 
-    --primary: 217.2 91.2% 59.8%;
-    --primary-foreground: 222.2 47.4% 11.2%;
+    /* Secondary Surfaces */
+    --secondary: 30 10% 20%;
+    --secondary-foreground: 35 48% 98%;
 
-    --secondary: 217.2 32.6% 17.5%;
-    --secondary-foreground: 210 40% 98%;
+    /* Gold Accent / Logo / Ring (Warm Muted Gold) */
+    --accent: 35 55% 60%; 
+    --accent-foreground: 30 10% 15%; /* Dark Text on Gold */
 
-    --muted: 217.2 32.6% 17.5%;
-    --muted-foreground: 215 20.2% 65.1%;
+    /* System */
+    --border: 30 10% 25%;
+    --input: 30 10% 25%;
+    --ring: 35 55% 60%;
 
-    --accent: 217.2 32.6% 17.5%;
-    --accent-foreground: 210 40% 98%;
-
-    --destructive: 0 62.8% 30.6%;
-    --destructive-foreground: 210 40% 98%;
-
-    --border: 217.2 32.6% 17.5%;
-    --input: 217.2 32.6% 17.5%;
-    --ring: 224.3 76.3% 48%;
-
-    --sidebar-background: 215 28% 17%;
-    --sidebar-foreground: 210 40% 98%;
-    --sidebar-primary: 217.2 91.2% 59.8%;
-    --sidebar-primary-foreground: 0 0% 100%;
-    --sidebar-accent: 215 25% 27%;
-    --sidebar-accent-foreground: 210 40% 98%;
-    --sidebar-border: 215 25% 27%;
-    --sidebar-ring: 217.2 91.2% 59.8%;
+    --destructive: 0 60% 35%;
+    --destructive-foreground: 0 0% 100%;
   }
 }
 
 @layer base {
+  /* CRITICAL FIX: Ensures HTML, Body, and the #root container fill the entire viewport height. */
+  html, body, #root {
+    height: 100%;
+    margin: 0;
+  }
+  
+  /* Apply the background to the body using the CSS variable */
+  body {
+    @apply bg-background text-foreground font-sans;
+  }
+  
+  /* The rest of your existing base styles */
   * {
     @apply border-border;
   }
 
-  body {
-    @apply bg-background text-foreground font-sans dark:bg-background dark:text-foreground;
-  }
-
-  pre, code {
+  pre,
+  code {
     @apply font-mono;
   }
 }
 
+/* Content styles remain untouched */
 .markdown-editor {
   @apply font-mono text-base leading-relaxed;
 }
 
 .markdown-preview {
-  @apply prose max-w-none prose-blue dark:prose-invert;
+  @apply prose max-w-none prose-neutral dark:prose-invert;
 }
 
 .markdown-preview pre {
@@ -123,10 +134,26 @@
 .markdown-preview h4,
 .markdown-preview h5,
 .markdown-preview h6 {
-  @apply font-sans font-semibold text-foreground;
+  @apply font-sans font-semibold text-accent tracking-wide;
 }
 
 .markdown-preview ul,
 .markdown-preview ol {
   @apply my-4 ml-6;
+}
+
+/* =========================================
+   FINAL FIX: Global Overrides for Hardcoded Colors
+   This ensures any remaining bg-white or text-black classes use your theme's colors.
+   ========================================= */
+@layer utilities {
+  .bg-white {
+    /* Forces bg-white to use the theme's background color (dark or light) */
+    background-color: hsl(var(--background)) !important;
+  }
+
+  .text-black {
+    /* Forces text-black to use the theme's foreground color (dark or light) */
+    color: hsl(var(--foreground)) !important;
+  }
 }
