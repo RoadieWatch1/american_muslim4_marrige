@@ -16,7 +16,7 @@ export const Hero: React.FC = () => {
         {/* FULL-BLEED BACKGROUND IMAGE */}
         <div className="absolute inset-0">
           <img
-            src="/images/hero-couple.webp.png"
+            src="/images/hero-couple.png"
             alt="Happy Muslim couple"
             className="w-full h-full object-cover object-center"
           />
