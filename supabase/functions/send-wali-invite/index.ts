@@ -31,6 +31,15 @@ const RESEND_DOMAIN =
 const APP_BASE_URL =
   Deno.env.get("APP_BASE_URL") ?? "https://www.americanmuslim4marriage.com";
 
+// ─────────────────────────────────────────────
+// CORS headers (allow your frontend origin)
+// ─────────────────────────────────────────────
+const corsHeaders: HeadersInit = {
+  "Access-Control-Allow-Origin": "*", // or set to "http://localhost:8080" + production URL
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
+
 if (!SUPABASE_URL || !SERVICE_ROLE_KEY) {
   console.error("Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY env vars");
 }
@@ -75,8 +84,18 @@ async function sendEmail(opts: {
 }
 
 serve(async (req: Request) => {
+  // ─────────────────────────────────────
+  // Handle CORS preflight
+  // ─────────────────────────────────────
+  if (req.method === "OPTIONS") {
+    return new Response("ok", { headers: corsHeaders });
+  }
+
   if (req.method !== "POST") {
-    return new Response("Method not allowed", { status: 405 });
+    return new Response("Method not allowed", {
+      status: 405,
+      headers: corsHeaders,
+    });
   }
 
   try {
@@ -88,7 +107,10 @@ serve(async (req: Request) => {
         JSON.stringify({ error: "Missing wali_link_id in body" }),
         {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
         },
       );
     }
@@ -106,7 +128,10 @@ serve(async (req: Request) => {
         JSON.stringify({ error: "Wali link not found" }),
         {
           status: 404,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
         },
       );
     }
@@ -118,7 +143,10 @@ serve(async (req: Request) => {
         }),
         {
           status: 400,
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            ...corsHeaders,
+            "Content-Type": "application/json",
+          },
         },
       );
     }
@@ -194,13 +222,25 @@ serve(async (req: Request) => {
 
     return new Response(
       JSON.stringify({ ok: true }),
-      { status: 200, headers: { "Content-Type": "application/json" } },
+      {
+        status: 200,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      },
     );
   } catch (err) {
     console.error("send-wali-invite error", err);
     return new Response(
       JSON.stringify({ error: "Internal error" }),
-      { status: 500, headers: { "Content-Type": "application/json" } },
+      {
+        status: 500,
+        headers: {
+          ...corsHeaders,
+          "Content-Type": "application/json",
+        },
+      },
     );
   }
 });

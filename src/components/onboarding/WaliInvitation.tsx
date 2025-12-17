@@ -19,18 +19,22 @@ interface WaliInvitationProps {
   }) => void;
   existingWali?: ExistingWali | null;
   inviteUrl?: string;
+  /** Optional callback to resend the invitation email via edge function */
+  onResendInvite?: () => Promise<void> | void;
 }
 
 export const WaliInvitation: React.FC<WaliInvitationProps> = ({
   onContinue,
   existingWali,
   inviteUrl,
+  onResendInvite,
 }) => {
   const { toast } = useToast();
   const [includeWali, setIncludeWali] = useState<boolean | null>(null);
   const [editingExisting, setEditingExisting] = useState(false);
   const [waliEmail, setWaliEmail] = useState(existingWali?.email || '');
   const [waliPhone, setWaliPhone] = useState(existingWali?.phone || '');
+  const [resendLoading, setResendLoading] = useState(false);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -76,10 +80,15 @@ export const WaliInvitation: React.FC<WaliInvitationProps> = ({
                 {inviteUrl && (
                   <div className="mt-3 space-y-1">
                     <p className="text-xs text-gray-500">
-                      Share this link with your wali so they can create their account:
+                      Share this link with your wali so they can create their
+                      account:
                     </p>
-                    <div className="flex gap-2 items-center">
-                      <Input readOnly value={inviteUrl} className="text-xs" />
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <Input
+                        readOnly
+                        value={inviteUrl}
+                        className="text-xs flex-1"
+                      />
 
                       <Button
                         type="button"
@@ -90,26 +99,45 @@ export const WaliInvitation: React.FC<WaliInvitationProps> = ({
                             .writeText(inviteUrl || '')
                             .then(() => {
                               toast({
-                                title: "Copied!",
-                                description: "Invite link copied to clipboard.",
+                                title: 'Copied!',
+                                description: 'Invite link copied to clipboard.',
                               });
                             })
                             .catch((err) => {
-                              console.error("Failed to copy", err);
+                              console.error('Failed to copy', err);
                               toast({
-                                title: "Copy failed",
-                                description: "Could not copy to clipboard.",
-                                variant: "destructive",
+                                title: 'Copy failed',
+                                description: 'Could not copy to clipboard.',
+                                variant: 'destructive',
                               });
                             });
                         }}
                       >
                         Copy
                       </Button>
+
+                      {/* Resend email button, only if callback provided */}
+                      {onResendInvite && (
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          disabled={resendLoading}
+                          onClick={async () => {
+                            try {
+                              setResendLoading(true);
+                              await onResendInvite();
+                            } finally {
+                              setResendLoading(false);
+                            }
+                          }}
+                        >
+                          {resendLoading ? 'Sending…' : 'Resend Email'}
+                        </Button>
+                      )}
                     </div>
                   </div>
                 )}
-
               </div>
 
               <div className="flex flex-col gap-3 sm:flex-row">
@@ -224,14 +252,13 @@ export const WaliInvitation: React.FC<WaliInvitationProps> = ({
 
 
 
-
-
 // import React, { useState } from 'react';
 // import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // import { Button } from '@/components/ui/Button';
 // import { Input } from '@/components/ui/input';
 // import { Label } from '@/components/ui/label';
 // import { Shield, ChevronRight } from 'lucide-react';
+// import { useToast } from '@/hooks/use-toast';
 
 // interface ExistingWali {
 //   email: string | null;
@@ -253,6 +280,7 @@ export const WaliInvitation: React.FC<WaliInvitationProps> = ({
 //   existingWali,
 //   inviteUrl,
 // }) => {
+//   const { toast } = useToast();
 //   const [includeWali, setIncludeWali] = useState<boolean | null>(null);
 //   const [editingExisting, setEditingExisting] = useState(false);
 //   const [waliEmail, setWaliEmail] = useState(existingWali?.email || '');
@@ -297,7 +325,47 @@ export const WaliInvitation: React.FC<WaliInvitationProps> = ({
 //                     {existingWali.phone}
 //                   </p>
 //                 )}
+
+//                 {/* Invite link (if available) */}
+//                 {inviteUrl && (
+//                   <div className="mt-3 space-y-1">
+//                     <p className="text-xs text-gray-500">
+//                       Share this link with your wali so they can create their account:
+//                     </p>
+//                     <div className="flex gap-2 items-center">
+//                       <Input readOnly value={inviteUrl} className="text-xs" />
+
+//                       <Button
+//                         type="button"
+//                         variant="outline"
+//                         size="sm"
+//                         onClick={() => {
+//                           navigator.clipboard
+//                             .writeText(inviteUrl || '')
+//                             .then(() => {
+//                               toast({
+//                                 title: "Copied!",
+//                                 description: "Invite link copied to clipboard.",
+//                               });
+//                             })
+//                             .catch((err) => {
+//                               console.error("Failed to copy", err);
+//                               toast({
+//                                 title: "Copy failed",
+//                                 description: "Could not copy to clipboard.",
+//                                 variant: "destructive",
+//                               });
+//                             });
+//                         }}
+//                       >
+//                         Copy
+//                       </Button>
+//                     </div>
+//                   </div>
+//                 )}
+
 //               </div>
+
 //               <div className="flex flex-col gap-3 sm:flex-row">
 //                 <Button
 //                   className="flex-1"
@@ -407,4 +475,3 @@ export const WaliInvitation: React.FC<WaliInvitationProps> = ({
 //     </div>
 //   );
 // };
-

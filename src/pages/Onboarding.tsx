@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+
 import { RoleSelection } from '@/components/onboarding/RoleSelection';
 import { WaliInvitation } from '@/components/onboarding/WaliInvitation';
 import { ProfileForm } from '@/components/onboarding/ProfileForm';
@@ -9,8 +10,10 @@ import { PhoneVerification } from '@/components/onboarding/PhoneVerification';
 import { PhotoUpload } from '@/components/onboarding/PhotoUpload';
 import { PersonalDetails } from '@/components/onboarding/PersonalDetails';
 import { IntroVideoUpload } from '@/components/onboarding/IntroVideoUpload';
+
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
+
 import { Progress } from '@/components/ui/progress';
 import { CheckCircle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
@@ -29,51 +32,191 @@ type WaliContinuePayload = {
   isUpdate?: boolean;
 };
 
+type ProfileRow = any;
+type WaliLinkRow = {
+  id: string;
+  status: string;
+  wali_email: string | null;
+  wali_phone: string | null;
+  invite_token: string | null;
+} | null;
+
+// ✅ Code-only flag (no env needed). Flip to true later when Twilio is ready.
+const PHONE_VERIFICATION_ENABLED = false;
+
+const ALL_STEP_NAMES = [
+  'Gender',
+  'Wali',
+  'Photos',
+  'Intro Video',
+  'Profile',
+  'Details',
+  'Islamic',
+  'Verify',
+] as const;
+
+const STEP_NAMES = (PHONE_VERIFICATION_ENABLED
+  ? ALL_STEP_NAMES
+  : ALL_STEP_NAMES.slice(0, 7)) as readonly string[];
+
+const TOTAL_STEPS = STEP_NAMES.length; // 7 when disabled, 8 when enabled
+
+function computeHasBasicProfile(profile: ProfileRow | null) {
+  return (
+    !!profile?.first_name &&
+    !!profile?.last_name &&
+    !!profile?.dob &&
+    !!profile?.city &&
+    !!profile?.state &&
+    !!profile?.marital_status &&
+    !!profile?.bio
+  );
+}
+
+function computeHasHeight(lifestyle: any) {
+  return (
+    (typeof lifestyle?.height === 'number' && !Number.isNaN(lifestyle.height)) ||
+    (typeof lifestyle?.height === 'string' && lifestyle.height.trim() !== '')
+  );
+}
+
+function computeHasPersonalDetails(profile: ProfileRow | null, lifestyle: any) {
+  const hasHeight = computeHasHeight(lifestyle);
+
+  return (
+    hasHeight &&
+    !!profile?.ethnicity &&
+    Array.isArray(profile?.languages_spoken) &&
+    profile.languages_spoken.length > 0 &&
+    !!lifestyle?.personality_traits &&
+    !!lifestyle?.looking_for &&
+    !!lifestyle?.family_plans
+  );
+}
+
+function computeHasIslamicPreferences(profile: ProfileRow | null, lifestyle: any) {
+  return (
+    !!profile?.prayer_frequency &&
+    !!lifestyle?.halal_strict &&
+    !!lifestyle?.mosque_attendance
+  );
+}
+
+function buildCompletedStepsFromDb(args: {
+  dbGender: 'male' | 'female' | null;
+  hasWaliInvite: boolean;
+  photoCount: number;
+  hasIntroVideo: boolean;
+  hasBasicProfile: boolean;
+  hasPersonalDetails: boolean;
+  hasIslamicPreferences: boolean;
+}) {
+  const {
+    dbGender,
+    hasWaliInvite,
+    photoCount,
+    hasIntroVideo,
+    hasBasicProfile,
+    hasPersonalDetails,
+    hasIslamicPreferences,
+  } = args;
+
+  const completed = Array(9).fill(false) as boolean[];
+
+  completed[1] = !!dbGender;
+
+  // wali step: complete if male (skipped) OR wali invite exists
+  completed[2] = dbGender === 'male' || hasWaliInvite;
+
+  // photos: require >= 2
+  completed[3] = photoCount >= 2;
+
+  // intro video: optional
+  completed[4] =
+    hasIntroVideo || hasBasicProfile || hasPersonalDetails || hasIslamicPreferences;
+
+  // profile step: basics + photos
+  completed[5] = hasBasicProfile && completed[3];
+
+  // details step
+  completed[6] = hasPersonalDetails && completed[5];
+
+  // islamic step
+  completed[7] = hasIslamicPreferences && completed[6];
+
+  return completed;
+}
+
+function computeInitialStep(args: {
+  dbGender: 'male' | 'female' | null;
+  hasWaliInvite: boolean;
+  photoCount: number;
+  hasBasicProfile: boolean;
+  hasPersonalDetails: boolean;
+  hasIslamicPreferences: boolean;
+}) {
+  const {
+    dbGender,
+    hasWaliInvite,
+    photoCount,
+    hasBasicProfile,
+    hasPersonalDetails,
+    hasIslamicPreferences,
+  } = args;
+
+  let s = 1;
+
+  if (dbGender === 'male') {
+    s = 3; // skip wali
+  } else if (dbGender === 'female') {
+    s = hasWaliInvite ? 3 : 2;
+  }
+
+  if (photoCount >= 2 && s <= 3) s = 4;
+  if (hasBasicProfile && photoCount >= 2 && s <= 4) s = 5;
+  if (hasPersonalDetails && photoCount >= 2 && hasBasicProfile && s <= 5) s = 6;
+  if (hasIslamicPreferences && photoCount >= 2 && hasBasicProfile && hasPersonalDetails && s <= 6)
+    s = 7;
+
+  return s;
+}
+
 export default function Onboarding() {
   const [step, setStep] = useState(1);
   const [gender, setGender] = useState<'male' | 'female' | null>(null);
   const [profileData, setProfileData] = useState<any>({});
   const [waliInfo, setWaliInfo] = useState<WaliInfo>(null);
   const [loadingInitial, setLoadingInitial] = useState(true);
+
   // index 1–8 used; index 0 ignored
-  const [completedSteps, setCompletedSteps] = useState<boolean[]>(() =>
-    Array(9).fill(false),
-  );
+  const [completedSteps, setCompletedSteps] = useState<boolean[]>(() => Array(9).fill(false));
 
   const { user, refreshProfile } = useAuth();
   const navigate = useNavigate();
   const { toast } = useToast();
 
-  const totalSteps = 8;
-  const stepNames = [
-    'Gender',
-    'Wali',
-    'Photos',
-    'Intro Video',
-    'Profile',
-    'Details',
-    'Islamic',
-    'Verify',
-  ];
+  const hasCompletedStep1 = useMemo(
+    () => !!(profileData?.gender || gender),
+    [profileData?.gender, gender]
+  );
 
-  // helper: has step 1 been completed in DB? (gender present)
-  const hasCompletedStep1 = !!(profileData?.gender || gender);
-
-  // Load existing profile + wali + media once so refresh doesn't lose data
+  // ─────────────────────────────────────────────────────────────
+  // Initial Load (profile + wali + photos) and derive step state
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
 
     (async () => {
       try {
-        // 1) Wali link
+        // 1) wali link
         const { data: waliData, error: waliError } = await supabase
           .from('wali_links')
           .select('id,status,wali_email,wali_phone,invite_token')
           .eq('ward_user_id', user.id)
           .in('status', ['invited', 'active'])
-          .maybeSingle();
+          .maybeSingle<WaliLinkRow>();
 
-        if (waliError && waliError.code !== 'PGRST116') {
+        if (waliError && (waliError as any).code !== 'PGRST116') {
           console.error('Error loading wali link', waliError);
         }
 
@@ -88,18 +231,23 @@ export default function Onboarding() {
           });
         }
 
-        // 2) Profile
+        // 2) profile
         const { data: profile, error: profileError } = await supabase
           .from('profiles')
           .select('*')
           .eq('id', user.id)
-          .maybeSingle();
+          .maybeSingle<ProfileRow>();
 
         if (profileError) {
           console.error('Error loading profile', profileError);
         }
 
-        // 3) Media photos
+        if (profile?.onboarding_completed) {
+          navigate('/dashboard');
+          return;
+        }
+
+        // 3) photos count
         const { data: mediaData, error: mediaError } = await supabase
           .from('media')
           .select('id')
@@ -113,130 +261,71 @@ export default function Onboarding() {
 
         const photoCount = mediaData?.length ?? 0;
 
-        // --- Apply loaded data to state ---
+        // apply to local state
         if (profile) {
           const lifestyle = (profile.lifestyle_choices || {}) as any;
 
           setProfileData({
             ...profile,
-            ...lifestyle, // flatten lifestyle choices into profileData for forms
+            ...lifestyle,
             languages:
-              (profile.languages_spoken &&
-                profile.languages_spoken.join(', ')) ||
-              '',
+              (profile.languages_spoken && profile.languages_spoken.join(', ')) || '',
           });
 
-          if (profile.gender) {
-            setGender(profile.gender as 'male' | 'female');
-          }
+          if (profile.gender) setGender(profile.gender as 'male' | 'female');
+        }
 
-          if (profile.onboarding_completed) {
+        // derive completion + step
+        const dbGender = (profile?.gender as 'male' | 'female' | null) ?? null;
+        const lifestyle = (profile?.lifestyle_choices || {}) as any;
+
+        const hasIntroVideo = !!profile?.intro_video_id;
+        const hasBasicProfile = computeHasBasicProfile(profile);
+        const hasPersonalDetails = computeHasPersonalDetails(profile, lifestyle);
+        const hasIslamicPreferences = computeHasIslamicPreferences(profile, lifestyle);
+
+        const initialCompleted = buildCompletedStepsFromDb({
+          dbGender,
+          hasWaliInvite,
+          photoCount,
+          hasIntroVideo,
+          hasBasicProfile,
+          hasPersonalDetails,
+          hasIslamicPreferences,
+        });
+
+        let initialStep = computeInitialStep({
+          dbGender,
+          hasWaliInvite,
+          photoCount,
+          hasBasicProfile,
+          hasPersonalDetails,
+          hasIslamicPreferences,
+        });
+
+        // ✅ if steps 1–7 complete:
+        const allPreVerifyComplete = initialCompleted.slice(1, 8).every(Boolean);
+
+        if (!PHONE_VERIFICATION_ENABLED) {
+          // auto-complete onboarding and go dashboard (no SMS)
+          if (allPreVerifyComplete) {
+            await supabase
+              .from('profiles')
+              .update({ onboarding_completed: true })
+              .eq('id', user.id);
+
             navigate('/dashboard');
             return;
           }
+
+          // never land on step 8 when disabled
+          if (initialStep > 7) initialStep = 7;
+        } else {
+          // old behavior: show step 8 on refresh
+          if (allPreVerifyComplete && initialStep < 8) {
+            initialStep = 8;
+          }
         }
-
-        // --- Completion checks based on DB values ---
-        const dbGender = profile?.gender as 'male' | 'female' | null;
-        const lifestyle = (profile?.lifestyle_choices || {}) as any;
-        const hasIntroVideo = !!profile?.intro_video_id;
-
-        const hasBasicProfile =
-          !!profile?.first_name &&
-          !!profile?.last_name &&
-          !!profile?.dob &&
-          !!profile?.city &&
-          !!profile?.state &&
-          !!profile?.marital_status &&
-          !!profile?.bio;
-
-        // ✅ height can be number (old cm) OR string "5' 7"
-        const hasHeight =
-          (typeof lifestyle.height === 'number' &&
-            !Number.isNaN(lifestyle.height)) ||
-          (typeof lifestyle.height === 'string' &&
-            lifestyle.height.trim() !== '');
-
-        const hasPersonalDetails =
-          hasHeight &&
-          !!profile?.ethnicity &&
-          Array.isArray(profile?.languages_spoken) &&
-          profile.languages_spoken.length > 0 &&
-          !!lifestyle.personality_traits &&
-          !!lifestyle.looking_for &&
-          !!lifestyle.family_plans;
-
-        // Islamic step completion: required Islamic fields present
-        const hasIslamicPreferences =
-          !!profile?.prayer_frequency &&
-          !!lifestyle.halal_strict &&
-          !!lifestyle.mosque_attendance;
-
-        // --- Decide initial step ---
-        let initialStep = 1;
-
-        if (dbGender === 'male') {
-          // Brothers skip wali step (start from Photos or later)
-          initialStep = 3;
-        } else if (dbGender === 'female') {
-          // Sisters: wali step unless invite already exists
-          initialStep = hasWaliInvite ? 3 : 2;
-        }
-
-        // If they already have >= 2 photos, jump at least to Intro Video (step 4)
-        if (photoCount >= 2 && initialStep <= 3) {
-          initialStep = 4;
-        }
-
-        // If profile basics exist, jump to Profile step (5)
-        if (hasBasicProfile && photoCount >= 2 && initialStep <= 4) {
-          initialStep = 5;
-        }
-
-        // If personal details completed, jump to Details step (6)
-        if (
-          hasPersonalDetails &&
-          photoCount >= 2 &&
-          hasBasicProfile &&
-          initialStep <= 5
-        ) {
-          initialStep = 6;
-        }
-
-        // If Islamic preferences filled, jump to Islamic step (7)
-        if (
-          hasIslamicPreferences &&
-          photoCount >= 2 &&
-          hasBasicProfile &&
-          hasPersonalDetails &&
-          initialStep <= 6
-        ) {
-          initialStep = 7;
-        }
-
-        // 🔹 Initialize completed steps from DB
-        const initialCompleted = Array(9).fill(false) as boolean[];
-
-        initialCompleted[1] = !!dbGender;
-        // Wali is considered "complete" if user is male (skipped) or a wali invite exists
-        initialCompleted[2] = dbGender === 'male' || hasWaliInvite;
-        initialCompleted[3] = photoCount >= 2;
-
-        // Step 4 (Intro Video) is optional:
-        initialCompleted[4] =
-          hasIntroVideo ||
-          hasBasicProfile ||
-          hasPersonalDetails ||
-          hasIslamicPreferences;
-
-        // Profile step complete if basics present & photos done
-        initialCompleted[5] = hasBasicProfile && initialCompleted[3];
-
-        // Personal details step complete if flags present
-        initialCompleted[6] = hasPersonalDetails && initialCompleted[5];
-
-        // Islamic prefs step complete if flags present
-        initialCompleted[7] = hasIslamicPreferences && initialCompleted[6];
 
         setCompletedSteps(initialCompleted);
         setStep(initialStep);
@@ -246,7 +335,9 @@ export default function Onboarding() {
     })();
   }, [user, navigate]);
 
+  // ─────────────────────────────────────────────────────────────
   // Build DB payload from merged profileData
+  // ─────────────────────────────────────────────────────────────
   const buildProfilePayload = (merged: any) => {
     if (!user) return null;
     if (!merged) return null;
@@ -256,7 +347,6 @@ export default function Onboarding() {
       email: user.email,
     };
 
-    // Basic identity
     if (merged.gender) payload.gender = merged.gender;
     if (merged.first_name) payload.first_name = merged.first_name;
     if (merged.last_name) payload.last_name = merged.last_name;
@@ -265,41 +355,29 @@ export default function Onboarding() {
     if (merged.state) payload.state = merged.state;
     if (merged.country) payload.country = merged.country;
 
-    // Marital / education / work
     if (merged.marital_status) payload.marital_status = merged.marital_status;
-    if (typeof merged.has_children === 'boolean')
-      payload.has_children = merged.has_children;
+    if (typeof merged.has_children === 'boolean') payload.has_children = merged.has_children;
     if (merged.education) payload.education = merged.education;
     if (merged.occupation) payload.occupation = merged.occupation;
 
-    // Narrative fields
     if (merged.bio) payload.bio = merged.bio;
     if (merged.ethnicity) payload.ethnicity = merged.ethnicity;
 
-    // Languages: UI keeps a comma-separated string; DB keeps arrays
     if (merged.languages) {
       const arr = String(merged.languages)
         .split(',')
         .map((s) => s.trim())
         .filter(Boolean);
 
-      if (arr.length) {
-        payload.languages_spoken = arr;
-      }
+      if (arr.length) payload.languages_spoken = arr;
     }
 
-    // Islamic prefs
-    if (merged.prayer_frequency)
-      payload.prayer_frequency = merged.prayer_frequency;
-    if (merged.islamic_education)
-      payload.islamic_education = merged.islamic_education;
+    if (merged.prayer_frequency) payload.prayer_frequency = merged.prayer_frequency;
+    if (merged.islamic_education) payload.islamic_education = merged.islamic_education;
 
-    // Onboarding flag
     if (merged.onboarding_completed) payload.onboarding_completed = true;
 
-    // Lifestyle JSON
     const lifestyle: any = {};
-
     [
       'height',
       'hobbies',
@@ -321,11 +399,7 @@ export default function Onboarding() {
       'hijab_preference',
       'beard_preference',
     ].forEach((key) => {
-      if (
-        merged[key] !== undefined &&
-        merged[key] !== null &&
-        merged[key] !== ''
-      ) {
+      if (merged[key] !== undefined && merged[key] !== null && merged[key] !== '') {
         lifestyle[key] = merged[key];
       }
     });
@@ -337,7 +411,6 @@ export default function Onboarding() {
     return payload;
   };
 
-  // Save one step: merge into state + upsert
   const saveStep = async (partial: any) => {
     if (!user) return;
 
@@ -359,94 +432,129 @@ export default function Onboarding() {
     }
   };
 
-  // Step handlers
+  // ─────────────────────────────────────────────────────────────
+  // Handlers
+  // ─────────────────────────────────────────────────────────────
   const handleRoleSelect = async (selectedGender: 'male' | 'female') => {
     setGender(selectedGender);
     await saveStep({ gender: selectedGender });
 
-    // mark step 1 complete; if male, wali step is also considered complete
     setCompletedSteps((prev) => {
       const next = [...prev];
       next[1] = true;
-      if (selectedGender === 'male') {
-        next[2] = true;
-      }
+      if (selectedGender === 'male') next[2] = true; // skip wali step
       return next;
     });
   };
 
   const handleWaliContinue = async (waliData?: WaliContinuePayload) => {
-    // If data is provided, we're creating/updating a wali link.
-    if (waliData && user) {
-      try {
-        if (waliInfo?.id || waliData.isUpdate) {
-          // UPDATE existing wali row
-          const { error } = await supabase
-            .from('wali_links')
-            .update({
-              wali_email: waliData.email,
-              wali_phone: waliData.phone,
-            })
-            .eq('id', waliInfo?.id as string);
+    if (!waliData) {
+      setCompletedSteps((prev) => {
+        const next = [...prev];
+        next[2] = true;
+        return next;
+      });
+      setStep(3);
+      return;
+    }
 
-          if (error) throw error;
+    if (!user) {
+      toast({
+        title: 'Not signed in',
+        description: 'Please sign in again and try inviting your wali.',
+        variant: 'destructive',
+      });
+      return;
+    }
 
+    let waliLinkId: string | null = null;
+
+    try {
+      if (waliInfo?.id || waliData.isUpdate) {
+        const { data, error } = await supabase
+          .from('wali_links')
+          .update({
+            wali_email: waliData.email,
+            wali_phone: waliData.phone,
+          })
+          .eq('id', waliInfo?.id as string)
+          .select('id,wali_email,wali_phone,invite_token')
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          waliLinkId = data.id;
           setWaliInfo((prev) =>
             prev
               ? {
-                ...prev,
-                email: waliData.email,
-                phone: waliData.phone,
-              }
-              : prev,
+                  ...prev,
+                  email: data.wali_email,
+                  phone: data.wali_phone,
+                  inviteToken: data.invite_token ?? null,
+                }
+              : {
+                  id: data.id,
+                  email: data.wali_email,
+                  phone: data.wali_phone,
+                  inviteToken: data.invite_token ?? null,
+                }
           );
-        } else {
-          // INSERT new wali row (invite_token generated in DB)
-          const { data, error } = await supabase
-            .from('wali_links')
-            .insert({
-              ward_user_id: user.id,
-              wali_email: waliData.email,
-              wali_phone: waliData.phone,
-              status: 'invited',
-            })
-            .select('id,wali_email,wali_phone,invite_token')
-            .maybeSingle();
-
-          if (error) throw error;
-
-          if (data) {
-            setWaliInfo({
-              id: data.id,
-              email: data.wali_email,
-              phone: data.wali_phone,
-              inviteToken: data.invite_token ?? null,
-            });
-
-            // For now, just show a toast with info that an invite was created.
-            // Later we’ll wire this to an email function.
-            if (data.invite_token) {
-              const inviteUrl = `${window.location.origin}/wali-invite?token=${data.invite_token}`;
-              console.log('Wali invite URL:', inviteUrl);
-              toast({
-                title: 'Wali invitation created',
-                description:
-                  'We generated an invite link for your wali. They will be able to create their account from that link.',
-              });
-            }
-          }
         }
-      } catch (error: any) {
-        console.error('Error saving wali info', error);
-        toast({
-          title: 'Could not save wali info',
-          description: error.message ?? 'Something went wrong',
-          variant: 'destructive',
-        });
+      } else {
+        const { data, error } = await supabase
+          .from('wali_links')
+          .insert({
+            ward_user_id: user.id,
+            wali_email: waliData.email,
+            wali_phone: waliData.phone,
+            status: 'invited',
+          })
+          .select('id,wali_email,wali_phone,invite_token')
+          .maybeSingle();
+
+        if (error) throw error;
+
+        if (data) {
+          waliLinkId = data.id;
+          setWaliInfo({
+            id: data.id,
+            email: data.wali_email,
+            phone: data.wali_phone,
+            inviteToken: data.invite_token ?? null,
+          });
+        }
       }
+
+      if (waliLinkId) {
+        const { error: fnError } = await supabase.functions.invoke('send-wali-invite', {
+          body: { wali_link_id: waliLinkId },
+        });
+
+        if (fnError) {
+          console.error('send-wali-invite error', fnError);
+          toast({
+            title: 'Wali email not sent',
+            description:
+              'We saved your wali details but sending the email failed. You can try again later.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Wali invitation sent',
+            description: `We have emailed an invitation to ${waliData.email}.`,
+          });
+        }
+      }
+    } catch (error: any) {
+      console.error('Error saving wali info / sending email', error);
+      toast({
+        title: 'Could not save wali info',
+        description: error?.message ?? 'Something went wrong',
+        variant: 'destructive',
+      });
     }
 
-    // mark wali step complete
     setCompletedSteps((prev) => {
       const next = [...prev];
       next[2] = true;
@@ -457,17 +565,15 @@ export default function Onboarding() {
   };
 
   const handlePhotoUpload = (photos: string[]) => {
-    // Photos already stored in storage + media table in PhotoUpload
     setProfileData((prev: any) => ({ ...prev, photos }));
 
-    // they can't leave the screen without >=2 photos
     setCompletedSteps((prev) => {
       const next = [...prev];
       next[3] = photos.length >= 2;
       return next;
     });
 
-    setStep(4); // go to Intro Video
+    setStep(4);
   };
 
   const handleProfileSubmit = async (data: any) => {
@@ -475,7 +581,7 @@ export default function Onboarding() {
 
     setCompletedSteps((prev) => {
       const next = [...prev];
-      next[5] = true; // Profile step
+      next[5] = true;
       return next;
     });
 
@@ -487,23 +593,11 @@ export default function Onboarding() {
 
     setCompletedSteps((prev) => {
       const next = [...prev];
-      next[6] = true; // Details step
+      next[6] = true;
       return next;
     });
 
     setStep(7);
-  };
-
-  const handlePreferencesSubmit = async (data: any) => {
-    await saveStep(data);
-
-    setCompletedSteps((prev) => {
-      const next = [...prev];
-      next[7] = true; // Islamic step
-      return next;
-    });
-
-    setStep(8);
   };
 
   const completeOnboarding = async () => {
@@ -512,11 +606,29 @@ export default function Onboarding() {
 
     setCompletedSteps((prev) => {
       const next = [...prev];
-      next[8] = true; // Verify step
+      next[8] = true; // safe even if step 8 is disabled
       return next;
     });
 
     navigate('/dashboard');
+  };
+
+  const handlePreferencesSubmit = async (data: any) => {
+    await saveStep(data);
+
+    setCompletedSteps((prev) => {
+      const next = [...prev];
+      next[7] = true;
+      return next;
+    });
+
+    // ✅ if phone verification disabled, finish onboarding now
+    if (!PHONE_VERIFICATION_ENABLED) {
+      await completeOnboarding();
+      return;
+    }
+
+    setStep(8);
   };
 
   const handlePhoneVerified = async () => {
@@ -528,35 +640,21 @@ export default function Onboarding() {
   };
 
   const goBack = () => {
-    if (step === 3 && gender === 'male') {
-      setStep(1);
-    } else {
-      setStep(step - 1);
-    }
+    if (step === 3 && gender === 'male') setStep(1);
+    else setStep(step - 1);
   };
 
-  // Next handler used for step 2 "Next" from nav bar
   const handleGenericNext = () => {
-    if (step === 2) {
-      setStep(3);
-    }
+    if (step === 2) setStep(3);
   };
 
-  // Generic Next for step 1 + 2 nav
   const handleNavNext = () => {
     if (!hasCompletedStep1) return;
 
     if (step === 1) {
-      const effectiveGender = (gender || profileData.gender) as
-        | 'male'
-        | 'female';
-
-      if (effectiveGender === 'male') {
-        // skip wali step
-        setStep(3);
-      } else {
-        setStep(2);
-      }
+      const effectiveGender = (gender || profileData.gender) as 'male' | 'female';
+      if (effectiveGender === 'male') setStep(3);
+      else setStep(2);
     } else if (step === 2) {
       handleGenericNext();
     }
@@ -564,14 +662,12 @@ export default function Onboarding() {
 
   const handleNavBack = () => {
     if (step === 1) return;
-    if (step === 2) {
-      setStep(1);
-    }
+    if (step === 2) setStep(1);
   };
 
   const canClickStep = (targetStep: number) => {
-    if (targetStep === step) return true; // current step - always allowed (no-op)
-    return completedSteps[targetStep]; // only completed steps can be jumped to
+    if (targetStep === step) return true;
+    return completedSteps[targetStep];
   };
 
   if (loadingInitial) {
@@ -587,17 +683,15 @@ export default function Onboarding() {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h1 className="text-3xl font-bold text-center mb-2">
-              Complete Your Profile
-            </h1>
+            <h1 className="text-3xl font-bold text-center mb-2">Complete Your Profile</h1>
             <p className="text-center text-gray-600 mb-6">
               Help us find your perfect match by completing these steps
             </p>
 
-            <Progress value={(step / totalSteps) * 100} className="h-3 mb-4" />
+            <Progress value={(step / TOTAL_STEPS) * 100} className="h-3 mb-4" />
 
             <div className="flex justify-between items-center">
-              {stepNames.map((name, index) => {
+              {STEP_NAMES.map((name, index) => {
                 const stepIndex = index + 1;
                 const isCompleted = completedSteps[stepIndex];
                 const isCurrent = step === stepIndex;
@@ -605,30 +699,28 @@ export default function Onboarding() {
 
                 return (
                   <button
-                    key={index}
+                    key={name}
                     type="button"
                     onClick={() => {
                       if (isClickable) setStep(stepIndex);
                     }}
-                    className={`flex flex-col items-center focus:outline-none ${isClickable
-                        ? 'cursor-pointer'
-                        : 'cursor-not-allowed opacity-60'
-                      }`}
+                    className={`flex flex-col items-center focus:outline-none ${
+                      isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                    }`}
                   >
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center ${isCompleted
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        isCompleted
                           ? 'bg-green-500 text-white'
                           : isCurrent
-                            ? 'bg-teal-600 text-white'
-                            : 'bg-gray-200 text-gray-500'
-                        }`}
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-gray-200 text-gray-500'
+                      }`}
                     >
                       {isCompleted ? (
                         <CheckCircle className="w-5 h-5" />
                       ) : (
-                        <span className="text-sm font-semibold">
-                          {stepIndex}
-                        </span>
+                        <span className="text-sm font-semibold">{stepIndex}</span>
                       )}
                     </div>
                     <span className="text-xs mt-1">{name}</span>
@@ -640,48 +732,62 @@ export default function Onboarding() {
 
           <div className="text-center mb-4">
             <p className="text-sm text-gray-600">
-              Step {step} of {totalSteps}: {stepNames[step - 1]}
+              Step {step} of {TOTAL_STEPS}: {STEP_NAMES[Math.max(0, step - 1)]}
             </p>
           </div>
         </div>
 
         {/* STEP CONTENT */}
         {step === 1 && (
-          <RoleSelection
-            selectedGender={profileData.gender}
-            onSelect={handleRoleSelect}
-          />
+          <RoleSelection selectedGender={profileData.gender} onSelect={handleRoleSelect} />
         )}
-        {/* {step === 2 && (
-          <WaliInvitation
-            onContinue={handleWaliContinue}
-            existingWali={
-              waliInfo ? { email: waliInfo.email, phone: waliInfo.phone } : null
-            }
-          />
-        )} */}
+
         {step === 2 && (
           <WaliInvitation
             onContinue={handleWaliContinue}
-            existingWali={
-              waliInfo ? { email: waliInfo.email, phone: waliInfo.phone } : null
-            }
+            existingWali={waliInfo ? { email: waliInfo.email, phone: waliInfo.phone } : null}
             inviteUrl={
               waliInfo?.inviteToken && typeof window !== 'undefined'
                 ? `${window.location.origin}/wali-invite?token=${waliInfo.inviteToken}`
                 : undefined
             }
+            onResendInvite={async () => {
+              if (!waliInfo?.id) {
+                toast({
+                  title: 'No invitation found',
+                  description: 'Please save wali details first, then try again.',
+                  variant: 'destructive',
+                });
+                return;
+              }
+
+              const { error } = await supabase.functions.invoke('send-wali-invite', {
+                body: { wali_link_id: waliInfo.id },
+              });
+
+              if (error) {
+                console.error('Resend wali invite error', error);
+                toast({
+                  title: 'Could not resend email',
+                  description: error.message ?? 'Please try again later.',
+                  variant: 'destructive',
+                });
+              } else {
+                toast({
+                  title: 'Invitation resent',
+                  description: `We’ve resent the wali invitation to ${waliInfo.email}.`,
+                });
+              }
+            }}
           />
         )}
-        {step === 3 && (
-          <PhotoUpload onSubmit={handlePhotoUpload} onBack={goBack} />
-        )}
+
+        {step === 3 && <PhotoUpload onSubmit={handlePhotoUpload} onBack={goBack} />}
+
         {step === 4 && (
-          <IntroVideoUpload
-            onSubmit={() => setStep(5)}
-            onBack={() => setStep(3)}
-          />
+          <IntroVideoUpload onSubmit={() => setStep(5)} onBack={() => setStep(3)} />
         )}
+
         {step === 5 && gender && (
           <ProfileForm
             gender={gender}
@@ -690,6 +796,7 @@ export default function Onboarding() {
             initialData={profileData}
           />
         )}
+
         {step === 6 && (
           <PersonalDetails
             onSubmit={handlePersonalDetailsSubmit}
@@ -697,6 +804,7 @@ export default function Onboarding() {
             initialData={profileData}
           />
         )}
+
         {step === 7 && (
           <IslamicPreferences
             onSubmit={handlePreferencesSubmit}
@@ -704,7 +812,9 @@ export default function Onboarding() {
             initialData={profileData}
           />
         )}
-        {step === 8 && (
+
+        {/* Step 8 only rendered when enabled */}
+        {PHONE_VERIFICATION_ENABLED && step === 8 && (
           <PhoneVerification
             onVerified={handlePhoneVerified}
             onSkip={handlePhoneSkip}
@@ -715,19 +825,10 @@ export default function Onboarding() {
         {/* NAVIGATION BAR FOR STEPS 1 & 2 */}
         {(step === 1 || step === 2) && (
           <div className="mt-8 flex justify-between">
-            <Button
-              type="button"
-              variant="outline"
-              onClick={handleNavBack}
-              disabled={step === 1}
-            >
+            <Button type="button" variant="outline" onClick={handleNavBack} disabled={step === 1}>
               Back
             </Button>
-            <Button
-              type="button"
-              onClick={handleNavNext}
-              disabled={!hasCompletedStep1}
-            >
+            <Button type="button" onClick={handleNavNext} disabled={!hasCompletedStep1}>
               Next
             </Button>
           </div>
@@ -742,8 +843,9 @@ export default function Onboarding() {
 
 
 // /* eslint-disable @typescript-eslint/no-explicit-any */
-// import React, { useEffect, useState } from 'react';
+// import React, { useEffect, useMemo, useState } from 'react';
 // import { useNavigate } from 'react-router-dom';
+
 // import { RoleSelection } from '@/components/onboarding/RoleSelection';
 // import { WaliInvitation } from '@/components/onboarding/WaliInvitation';
 // import { ProfileForm } from '@/components/onboarding/ProfileForm';
@@ -752,8 +854,10 @@ export default function Onboarding() {
 // import { PhotoUpload } from '@/components/onboarding/PhotoUpload';
 // import { PersonalDetails } from '@/components/onboarding/PersonalDetails';
 // import { IntroVideoUpload } from '@/components/onboarding/IntroVideoUpload';
+
 // import { useAuth } from '@/contexts/AuthContext';
 // import { supabase } from '@/lib/supabase';
+
 // import { Progress } from '@/components/ui/progress';
 // import { CheckCircle } from 'lucide-react';
 // import { useToast } from '@/hooks/use-toast';
@@ -763,6 +867,7 @@ export default function Onboarding() {
 //   id: string;
 //   email: string | null;
 //   phone: string | null;
+//   inviteToken: string | null;
 // } | null;
 
 // type WaliContinuePayload = {
@@ -771,51 +876,178 @@ export default function Onboarding() {
 //   isUpdate?: boolean;
 // };
 
+// type ProfileRow = any;
+// type WaliLinkRow = {
+//   id: string;
+//   status: string;
+//   wali_email: string | null;
+//   wali_phone: string | null;
+//   invite_token: string | null;
+// } | null;
+
+// const TOTAL_STEPS = 8;
+// const STEP_NAMES = [
+//   'Gender',
+//   'Wali',
+//   'Photos',
+//   'Intro Video',
+//   'Profile',
+//   'Details',
+//   'Islamic',
+//   'Verify',
+// ] as const;
+
+// function computeHasBasicProfile(profile: ProfileRow | null) {
+//   return (
+//     !!profile?.first_name &&
+//     !!profile?.last_name &&
+//     !!profile?.dob &&
+//     !!profile?.city &&
+//     !!profile?.state &&
+//     !!profile?.marital_status &&
+//     !!profile?.bio
+//   );
+// }
+
+// function computeHasHeight(lifestyle: any) {
+//   return (
+//     (typeof lifestyle?.height === 'number' && !Number.isNaN(lifestyle.height)) ||
+//     (typeof lifestyle?.height === 'string' && lifestyle.height.trim() !== '')
+//   );
+// }
+
+// function computeHasPersonalDetails(profile: ProfileRow | null, lifestyle: any) {
+//   const hasHeight = computeHasHeight(lifestyle);
+
+//   return (
+//     hasHeight &&
+//     !!profile?.ethnicity &&
+//     Array.isArray(profile?.languages_spoken) &&
+//     profile.languages_spoken.length > 0 &&
+//     !!lifestyle?.personality_traits &&
+//     !!lifestyle?.looking_for &&
+//     !!lifestyle?.family_plans
+//   );
+// }
+
+// function computeHasIslamicPreferences(profile: ProfileRow | null, lifestyle: any) {
+//   return (
+//     !!profile?.prayer_frequency &&
+//     !!lifestyle?.halal_strict &&
+//     !!lifestyle?.mosque_attendance
+//   );
+// }
+
+// function buildCompletedStepsFromDb(args: {
+//   dbGender: 'male' | 'female' | null;
+//   hasWaliInvite: boolean;
+//   photoCount: number;
+//   hasIntroVideo: boolean;
+//   hasBasicProfile: boolean;
+//   hasPersonalDetails: boolean;
+//   hasIslamicPreferences: boolean;
+// }) {
+//   const {
+//     dbGender,
+//     hasWaliInvite,
+//     photoCount,
+//     hasIntroVideo,
+//     hasBasicProfile,
+//     hasPersonalDetails,
+//     hasIslamicPreferences,
+//   } = args;
+
+//   const completed = Array(9).fill(false) as boolean[];
+
+//   completed[1] = !!dbGender;
+
+//   // wali step: complete if male (skipped) OR wali invite exists
+//   completed[2] = dbGender === 'male' || hasWaliInvite;
+
+//   // photos: require >= 2
+//   completed[3] = photoCount >= 2;
+
+//   // intro video: optional
+//   completed[4] = hasIntroVideo || hasBasicProfile || hasPersonalDetails || hasIslamicPreferences;
+
+//   // profile step: basics + photos
+//   completed[5] = hasBasicProfile && completed[3];
+
+//   // details step
+//   completed[6] = hasPersonalDetails && completed[5];
+
+//   // islamic step
+//   completed[7] = hasIslamicPreferences && completed[6];
+
+//   return completed;
+// }
+
+// function computeInitialStep(args: {
+//   dbGender: 'male' | 'female' | null;
+//   hasWaliInvite: boolean;
+//   photoCount: number;
+//   hasBasicProfile: boolean;
+//   hasPersonalDetails: boolean;
+//   hasIslamicPreferences: boolean;
+// }) {
+//   const {
+//     dbGender,
+//     hasWaliInvite,
+//     photoCount,
+//     hasBasicProfile,
+//     hasPersonalDetails,
+//     hasIslamicPreferences,
+//   } = args;
+
+//   let s = 1;
+
+//   if (dbGender === 'male') {
+//     s = 3; // skip wali
+//   } else if (dbGender === 'female') {
+//     s = hasWaliInvite ? 3 : 2;
+//   }
+
+//   if (photoCount >= 2 && s <= 3) s = 4;
+//   if (hasBasicProfile && photoCount >= 2 && s <= 4) s = 5;
+//   if (hasPersonalDetails && photoCount >= 2 && hasBasicProfile && s <= 5) s = 6;
+//   if (hasIslamicPreferences && photoCount >= 2 && hasBasicProfile && hasPersonalDetails && s <= 6) s = 7;
+
+//   return s;
+// }
+
 // export default function Onboarding() {
 //   const [step, setStep] = useState(1);
 //   const [gender, setGender] = useState<'male' | 'female' | null>(null);
 //   const [profileData, setProfileData] = useState<any>({});
 //   const [waliInfo, setWaliInfo] = useState<WaliInfo>(null);
 //   const [loadingInitial, setLoadingInitial] = useState(true);
+
 //   // index 1–8 used; index 0 ignored
-//   const [completedSteps, setCompletedSteps] = useState<boolean[]>(() =>
-//     Array(9).fill(false)
-//   );
+//   const [completedSteps, setCompletedSteps] = useState<boolean[]>(() => Array(9).fill(false));
 
 //   const { user, refreshProfile } = useAuth();
 //   const navigate = useNavigate();
 //   const { toast } = useToast();
 
-//   const totalSteps = 8;
-//   const stepNames = [
-//     'Gender',
-//     'Wali',
-//     'Photos',
-//     'Intro Video',
-//     'Profile',
-//     'Details',
-//     'Islamic',
-//     'Verify',
-//   ];
+//   const hasCompletedStep1 = useMemo(() => !!(profileData?.gender || gender), [profileData?.gender, gender]);
 
-//   // helper: has step 1 been completed in DB? (gender present)
-//   const hasCompletedStep1 = !!(profileData?.gender || gender);
-
-//   // Load existing profile + wali + media once so refresh doesn't lose data
+//   // ─────────────────────────────────────────────────────────────
+//   // Initial Load (profile + wali + photos) and derive step state
+//   // ─────────────────────────────────────────────────────────────
 //   useEffect(() => {
 //     if (!user) return;
 
 //     (async () => {
 //       try {
-//         // 1) Wali link
+//         // 1) wali link
 //         const { data: waliData, error: waliError } = await supabase
 //           .from('wali_links')
-//           .select('id,status,wali_email,wali_phone')
+//           .select('id,status,wali_email,wali_phone,invite_token')
 //           .eq('ward_user_id', user.id)
 //           .in('status', ['invited', 'active'])
-//           .maybeSingle();
+//           .maybeSingle<WaliLinkRow>();
 
-//         if (waliError && waliError.code !== 'PGRST116') {
+//         if (waliError && (waliError as any).code !== 'PGRST116') {
 //           console.error('Error loading wali link', waliError);
 //         }
 
@@ -826,21 +1058,27 @@ export default function Onboarding() {
 //             id: waliData.id,
 //             email: waliData.wali_email,
 //             phone: waliData.wali_phone,
+//             inviteToken: waliData.invite_token ?? null,
 //           });
 //         }
 
-//         // 2) Profile
+//         // 2) profile
 //         const { data: profile, error: profileError } = await supabase
 //           .from('profiles')
 //           .select('*')
 //           .eq('id', user.id)
-//           .maybeSingle();
+//           .maybeSingle<ProfileRow>();
 
 //         if (profileError) {
 //           console.error('Error loading profile', profileError);
 //         }
 
-//         // 3) Media photos
+//         if (profile?.onboarding_completed) {
+//           navigate('/dashboard');
+//           return;
+//         }
+
+//         // 3) photos count
 //         const { data: mediaData, error: mediaError } = await supabase
 //           .from('media')
 //           .select('id')
@@ -854,135 +1092,52 @@ export default function Onboarding() {
 
 //         const photoCount = mediaData?.length ?? 0;
 
-//         // --- Apply loaded data to state ---
+//         // apply to local state
 //         if (profile) {
 //           const lifestyle = (profile.lifestyle_choices || {}) as any;
 
 //           setProfileData({
 //             ...profile,
-//             ...lifestyle, // flatten lifestyle choices into profileData for forms
-//             languages:
-//               (profile.languages_spoken &&
-//                 profile.languages_spoken.join(', ')) ||
-//               '',
+//             ...lifestyle,
+//             languages: (profile.languages_spoken && profile.languages_spoken.join(', ')) || '',
 //           });
 
-//           if (profile.gender) {
-//             setGender(profile.gender as 'male' | 'female');
-//           }
-
-//           if (profile.onboarding_completed) {
-//             navigate('/dashboard');
-//             return;
-//           }
+//           if (profile.gender) setGender(profile.gender as 'male' | 'female');
 //         }
 
-//         // --- Completion checks based on DB values ---
-//         const dbGender = profile?.gender as 'male' | 'female' | null;
+//         // derive completion + step
+//         const dbGender = (profile?.gender as 'male' | 'female' | null) ?? null;
 //         const lifestyle = (profile?.lifestyle_choices || {}) as any;
+
 //         const hasIntroVideo = !!profile?.intro_video_id;
+//         const hasBasicProfile = computeHasBasicProfile(profile);
+//         const hasPersonalDetails = computeHasPersonalDetails(profile, lifestyle);
+//         const hasIslamicPreferences = computeHasIslamicPreferences(profile, lifestyle);
 
-//         const hasBasicProfile =
-//           !!profile?.first_name &&
-//           !!profile?.last_name &&
-//           !!profile?.dob &&
-//           !!profile?.city &&
-//           !!profile?.state &&
-//           !!profile?.marital_status &&
-//           !!profile?.bio;
+//         const initialCompleted = buildCompletedStepsFromDb({
+//           dbGender,
+//           hasWaliInvite,
+//           photoCount,
+//           hasIntroVideo,
+//           hasBasicProfile,
+//           hasPersonalDetails,
+//           hasIslamicPreferences,
+//         });
 
-//         // ✅ height can be number (old cm) OR string "5' 7"
-//         const hasHeight =
-//           (typeof lifestyle.height === 'number' &&
-//             !Number.isNaN(lifestyle.height)) ||
-//           (typeof lifestyle.height === 'string' &&
-//             lifestyle.height.trim() !== '');
+//         let initialStep = computeInitialStep({
+//           dbGender,
+//           hasWaliInvite,
+//           photoCount,
+//           hasBasicProfile,
+//           hasPersonalDetails,
+//           hasIslamicPreferences,
+//         });
 
-//         const hasPersonalDetails =
-//           hasHeight &&
-//           !!profile?.ethnicity &&
-//           Array.isArray(profile?.languages_spoken) &&
-//           profile.languages_spoken.length > 0 &&
-//           !!lifestyle.personality_traits &&
-//           !!lifestyle.looking_for &&
-//           !!lifestyle.family_plans;
-
-//         // Islamic step completion: required Islamic fields present
-//         const hasIslamicPreferences =
-//           !!profile?.prayer_frequency &&
-//           !!lifestyle.halal_strict &&
-//           !!lifestyle.mosque_attendance;
-
-//         // --- Decide initial step ---
-//         let initialStep = 1;
-
-//         if (dbGender === 'male') {
-//           // Brothers skip wali step (start from Photos or later)
-//           initialStep = 3;
-//         } else if (dbGender === 'female') {
-//           // Sisters: wali step unless invite already exists
-//           initialStep = hasWaliInvite ? 3 : 2;
+//         // ✅ If ALL steps 1–7 are complete, show step 8 on refresh
+//         const allPreVerifyComplete = initialCompleted.slice(1, 8).every(Boolean);
+//         if (allPreVerifyComplete && initialStep < 8) {
+//           initialStep = 8;
 //         }
-
-//         // If they already have >= 2 photos, jump at least to Intro Video (step 4)
-//         if (photoCount >= 2 && initialStep <= 3) {
-//           initialStep = 4;
-//         }
-
-//         // If profile basics exist, jump to Profile step (5)
-//         if (hasBasicProfile && photoCount >= 2 && initialStep <= 4) {
-//           initialStep = 5;
-//         }
-
-//         // If personal details completed, jump to Details step (6)
-//         if (
-//           hasPersonalDetails &&
-//           photoCount >= 2 &&
-//           hasBasicProfile &&
-//           initialStep <= 5
-//         ) {
-//           initialStep = 6;
-//         }
-
-//         // If Islamic preferences filled, jump to Islamic step (7)
-//         if (
-//           hasIslamicPreferences &&
-//           photoCount >= 2 &&
-//           hasBasicProfile &&
-//           hasPersonalDetails &&
-//           initialStep <= 6
-//         ) {
-//           initialStep = 7;
-//         }
-
-//         // 🔹 Initialize completed steps from DB
-//         const initialCompleted = Array(9).fill(false) as boolean[];
-
-//         initialCompleted[1] = !!dbGender;
-//         // Wali is considered "complete" if user is male (skipped) or a wali invite exists
-//         initialCompleted[2] = dbGender === 'male' || hasWaliInvite;
-//         initialCompleted[3] = photoCount >= 2;
-
-//         // Step 4 (Intro Video) is optional:
-//         // - mark complete if they already have a video
-//         // - OR if they've clearly progressed beyond it (profile filled etc)
-//         initialCompleted[4] =
-//           hasIntroVideo ||
-//           hasBasicProfile ||
-//           hasPersonalDetails ||
-//           hasIslamicPreferences;
-
-//         // Profile step complete if basics present & photos done
-//         initialCompleted[5] = hasBasicProfile && initialCompleted[3];
-
-//         // Personal details step complete if flags present
-//         initialCompleted[6] = hasPersonalDetails && initialCompleted[5];
-
-//         // Islamic prefs step complete if flags present
-//         initialCompleted[7] = hasIslamicPreferences && initialCompleted[6];
-
-//         // Step 8 completion is effectively when onboarding is done, which happens
-//         // in completeOnboarding, so we don't set it here.
 
 //         setCompletedSteps(initialCompleted);
 //         setStep(initialStep);
@@ -992,7 +1147,9 @@ export default function Onboarding() {
 //     })();
 //   }, [user, navigate]);
 
+//   // ─────────────────────────────────────────────────────────────
 //   // Build DB payload from merged profileData
+//   // ─────────────────────────────────────────────────────────────
 //   const buildProfilePayload = (merged: any) => {
 //     if (!user) return null;
 //     if (!merged) return null;
@@ -1002,7 +1159,6 @@ export default function Onboarding() {
 //       email: user.email,
 //     };
 
-//     // Basic identity
 //     if (merged.gender) payload.gender = merged.gender;
 //     if (merged.first_name) payload.first_name = merged.first_name;
 //     if (merged.last_name) payload.last_name = merged.last_name;
@@ -1011,41 +1167,29 @@ export default function Onboarding() {
 //     if (merged.state) payload.state = merged.state;
 //     if (merged.country) payload.country = merged.country;
 
-//     // Marital / education / work
 //     if (merged.marital_status) payload.marital_status = merged.marital_status;
-//     if (typeof merged.has_children === 'boolean')
-//       payload.has_children = merged.has_children;
+//     if (typeof merged.has_children === 'boolean') payload.has_children = merged.has_children;
 //     if (merged.education) payload.education = merged.education;
 //     if (merged.occupation) payload.occupation = merged.occupation;
 
-//     // Narrative fields
 //     if (merged.bio) payload.bio = merged.bio;
 //     if (merged.ethnicity) payload.ethnicity = merged.ethnicity;
 
-//     // Languages: UI keeps a comma-separated string; DB keeps arrays (languages_spoken only)
 //     if (merged.languages) {
 //       const arr = String(merged.languages)
 //         .split(',')
 //         .map((s) => s.trim())
 //         .filter(Boolean);
 
-//       if (arr.length) {
-//         payload.languages_spoken = arr;
-//       }
+//       if (arr.length) payload.languages_spoken = arr;
 //     }
 
-//     // Islamic prefs (columns that actually exist)
-//     if (merged.prayer_frequency)
-//       payload.prayer_frequency = merged.prayer_frequency;
-//     if (merged.islamic_education)
-//       payload.islamic_education = merged.islamic_education;
+//     if (merged.prayer_frequency) payload.prayer_frequency = merged.prayer_frequency;
+//     if (merged.islamic_education) payload.islamic_education = merged.islamic_education;
 
-//     // Onboarding flag
 //     if (merged.onboarding_completed) payload.onboarding_completed = true;
 
-//     // Pack all extra fields into lifestyle_choices (jsonb)
 //     const lifestyle: any = {};
-
 //     [
 //       'height',
 //       'hobbies',
@@ -1067,11 +1211,7 @@ export default function Onboarding() {
 //       'hijab_preference',
 //       'beard_preference',
 //     ].forEach((key) => {
-//       if (
-//         merged[key] !== undefined &&
-//         merged[key] !== null &&
-//         merged[key] !== ''
-//       ) {
+//       if (merged[key] !== undefined && merged[key] !== null && merged[key] !== '') {
 //         lifestyle[key] = merged[key];
 //       }
 //     });
@@ -1083,7 +1223,6 @@ export default function Onboarding() {
 //     return payload;
 //   };
 
-//   // Save one step: merge into state + upsert
 //   const saveStep = async (partial: any) => {
 //     if (!user) return;
 
@@ -1105,77 +1244,129 @@ export default function Onboarding() {
 //     }
 //   };
 
-//   // Step handlers
+//   // ─────────────────────────────────────────────────────────────
+//   // Handlers
+//   // ─────────────────────────────────────────────────────────────
 //   const handleRoleSelect = async (selectedGender: 'male' | 'female') => {
 //     setGender(selectedGender);
 //     await saveStep({ gender: selectedGender });
 
-//     // mark step 1 complete; if male, wali step is also considered complete
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
 //       next[1] = true;
-//       if (selectedGender === 'male') {
-//         next[2] = true;
-//       }
+//       if (selectedGender === 'male') next[2] = true; // skip wali step
 //       return next;
 //     });
 //   };
 
 //   const handleWaliContinue = async (waliData?: WaliContinuePayload) => {
-//     // If data is provided, we're creating/updating a wali link.
-//     // If not, user chose "Not right now" or just continued with existing info.
-//     if (waliData && user) {
-//       try {
-//         if (waliInfo?.id || waliData.isUpdate) {
-//           // UPDATE existing wali row
-//           const { error } = await supabase
-//             .from('wali_links')
-//             .update({
-//               wali_email: waliData.email,
-//               wali_phone: waliData.phone,
-//             })
-//             .eq('id', waliInfo?.id as string);
-
-//           if (error) throw error;
-
-//           setWaliInfo((prev) =>
-//             prev
-//               ? { ...prev, email: waliData.email, phone: waliData.phone }
-//               : prev
-//           );
-//         } else {
-//           // INSERT new wali row
-//           const { data, error } = await supabase
-//             .from('wali_links')
-//             .insert({
-//               ward_user_id: user.id,
-//               wali_email: waliData.email,
-//               wali_phone: waliData.phone,
-//             })
-//             .select()
-//             .maybeSingle();
-
-//           if (error) throw error;
-
-//           if (data) {
-//             setWaliInfo({
-//               id: data.id,
-//               email: data.wali_email,
-//               phone: data.wali_phone,
-//             });
-//           }
-//         }
-//       } catch (error: any) {
-//         console.error('Error saving wali info', error);
-//         toast({
-//           title: 'Could not save wali info',
-//           description: error.message ?? 'Something went wrong',
-//           variant: 'destructive',
-//         });
-//       }
+//     if (!waliData) {
+//       setCompletedSteps((prev) => {
+//         const next = [...prev];
+//         next[2] = true;
+//         return next;
+//       });
+//       setStep(3);
+//       return;
 //     }
 
-//     // mark wali step complete
+//     if (!user) {
+//       toast({
+//         title: 'Not signed in',
+//         description: 'Please sign in again and try inviting your wali.',
+//         variant: 'destructive',
+//       });
+//       return;
+//     }
+
+//     let waliLinkId: string | null = null;
+
+//     try {
+//       if (waliInfo?.id || waliData.isUpdate) {
+//         const { data, error } = await supabase
+//           .from('wali_links')
+//           .update({
+//             wali_email: waliData.email,
+//             wali_phone: waliData.phone,
+//           })
+//           .eq('id', waliInfo?.id as string)
+//           .select('id,wali_email,wali_phone,invite_token')
+//           .maybeSingle();
+
+//         if (error) throw error;
+
+//         if (data) {
+//           waliLinkId = data.id;
+//           setWaliInfo((prev) =>
+//             prev
+//               ? {
+//                   ...prev,
+//                   email: data.wali_email,
+//                   phone: data.wali_phone,
+//                   inviteToken: data.invite_token ?? null,
+//                 }
+//               : {
+//                   id: data.id,
+//                   email: data.wali_email,
+//                   phone: data.wali_phone,
+//                   inviteToken: data.invite_token ?? null,
+//                 },
+//           );
+//         }
+//       } else {
+//         const { data, error } = await supabase
+//           .from('wali_links')
+//           .insert({
+//             ward_user_id: user.id,
+//             wali_email: waliData.email,
+//             wali_phone: waliData.phone,
+//             status: 'invited',
+//           })
+//           .select('id,wali_email,wali_phone,invite_token')
+//           .maybeSingle();
+
+//         if (error) throw error;
+
+//         if (data) {
+//           waliLinkId = data.id;
+//           setWaliInfo({
+//             id: data.id,
+//             email: data.wali_email,
+//             phone: data.wali_phone,
+//             inviteToken: data.invite_token ?? null,
+//           });
+//         }
+//       }
+
+//       if (waliLinkId) {
+//         const { error: fnError } = await supabase.functions.invoke('send-wali-invite', {
+//           body: { wali_link_id: waliLinkId },
+//         });
+
+//         if (fnError) {
+//           console.error('send-wali-invite error', fnError);
+//           toast({
+//             title: 'Wali email not sent',
+//             description:
+//               'We saved your wali details but sending the email failed. You can try again later.',
+//             variant: 'destructive',
+//           });
+//         } else {
+//           toast({
+//             title: 'Wali invitation sent',
+//             description: `We have emailed an invitation to ${waliData.email}.`,
+//           });
+//         }
+//       }
+//     } catch (error: any) {
+//       console.error('Error saving wali info / sending email', error);
+//       toast({
+//         title: 'Could not save wali info',
+//         description: error?.message ?? 'Something went wrong',
+//         variant: 'destructive',
+//       });
+//     }
+
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
 //       next[2] = true;
@@ -1186,17 +1377,15 @@ export default function Onboarding() {
 //   };
 
 //   const handlePhotoUpload = (photos: string[]) => {
-//     // Photos already stored in storage + media table in PhotoUpload
 //     setProfileData((prev: any) => ({ ...prev, photos }));
 
-//     // they can't leave the screen without >=2 photos
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
 //       next[3] = photos.length >= 2;
 //       return next;
 //     });
 
-//     setStep(4); // go to Intro Video
+//     setStep(4);
 //   };
 
 //   const handleProfileSubmit = async (data: any) => {
@@ -1204,7 +1393,7 @@ export default function Onboarding() {
 
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
-//       next[5] = true; // Profile step
+//       next[5] = true;
 //       return next;
 //     });
 
@@ -1216,7 +1405,7 @@ export default function Onboarding() {
 
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
-//       next[6] = true; // Details step
+//       next[6] = true;
 //       return next;
 //     });
 
@@ -1228,7 +1417,7 @@ export default function Onboarding() {
 
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
-//       next[7] = true; // Islamic step
+//       next[7] = true;
 //       return next;
 //     });
 
@@ -1241,7 +1430,7 @@ export default function Onboarding() {
 
 //     setCompletedSteps((prev) => {
 //       const next = [...prev];
-//       next[8] = true; // Verify step
+//       next[8] = true;
 //       return next;
 //     });
 
@@ -1257,35 +1446,21 @@ export default function Onboarding() {
 //   };
 
 //   const goBack = () => {
-//     if (step === 3 && gender === 'male') {
-//       setStep(1);
-//     } else {
-//       setStep(step - 1);
-//     }
+//     if (step === 3 && gender === 'male') setStep(1);
+//     else setStep(step - 1);
 //   };
 
-//   // Next handler used for step 2 "Next" from nav bar
 //   const handleGenericNext = () => {
-//     if (step === 2) {
-//       setStep(3);
-//     }
+//     if (step === 2) setStep(3);
 //   };
 
-//   // Generic Next for step 1 + 2 nav
 //   const handleNavNext = () => {
 //     if (!hasCompletedStep1) return;
 
 //     if (step === 1) {
-//       const effectiveGender = (gender || profileData.gender) as
-//         | 'male'
-//         | 'female';
-
-//       if (effectiveGender === 'male') {
-//         // skip wali step
-//         setStep(3);
-//       } else {
-//         setStep(2);
-//       }
+//       const effectiveGender = (gender || profileData.gender) as 'male' | 'female';
+//       if (effectiveGender === 'male') setStep(3);
+//       else setStep(2);
 //     } else if (step === 2) {
 //       handleGenericNext();
 //     }
@@ -1293,14 +1468,12 @@ export default function Onboarding() {
 
 //   const handleNavBack = () => {
 //     if (step === 1) return;
-//     if (step === 2) {
-//       setStep(1);
-//     }
+//     if (step === 2) setStep(1);
 //   };
 
 //   const canClickStep = (targetStep: number) => {
-//     if (targetStep === step) return true; // current step - always allowed (no-op)
-//     return completedSteps[targetStep]; // only completed steps can be jumped to
+//     if (targetStep === step) return true;
+//     return completedSteps[targetStep];
 //   };
 
 //   if (loadingInitial) {
@@ -1316,17 +1489,15 @@ export default function Onboarding() {
 //       <div className="max-w-4xl mx-auto">
 //         <div className="mb-8">
 //           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-//             <h1 className="text-3xl font-bold text-center mb-2">
-//               Complete Your Profile
-//             </h1>
+//             <h1 className="text-3xl font-bold text-center mb-2">Complete Your Profile</h1>
 //             <p className="text-center text-gray-600 mb-6">
 //               Help us find your perfect match by completing these steps
 //             </p>
 
-//             <Progress value={(step / totalSteps) * 100} className="h-3 mb-4" />
+//             <Progress value={(step / TOTAL_STEPS) * 100} className="h-3 mb-4" />
 
 //             <div className="flex justify-between items-center">
-//               {stepNames.map((name, index) => {
+//               {STEP_NAMES.map((name, index) => {
 //                 const stepIndex = index + 1;
 //                 const isCompleted = completedSteps[stepIndex];
 //                 const isCurrent = step === stepIndex;
@@ -1334,15 +1505,13 @@ export default function Onboarding() {
 
 //                 return (
 //                   <button
-//                     key={index}
+//                     key={name}
 //                     type="button"
 //                     onClick={() => {
 //                       if (isClickable) setStep(stepIndex);
 //                     }}
 //                     className={`flex flex-col items-center focus:outline-none ${
-//                       isClickable
-//                         ? 'cursor-pointer'
-//                         : 'cursor-not-allowed opacity-60'
+//                       isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
 //                     }`}
 //                   >
 //                     <div
@@ -1354,13 +1523,7 @@ export default function Onboarding() {
 //                           : 'bg-gray-200 text-gray-500'
 //                       }`}
 //                     >
-//                       {isCompleted ? (
-//                         <CheckCircle className="w-5 h-5" />
-//                       ) : (
-//                         <span className="text-sm font-semibold">
-//                           {stepIndex}
-//                         </span>
-//                       )}
+//                       {isCompleted ? <CheckCircle className="w-5 h-5" /> : <span className="text-sm font-semibold">{stepIndex}</span>}
 //                     </div>
 //                     <span className="text-xs mt-1">{name}</span>
 //                   </button>
@@ -1371,81 +1534,85 @@ export default function Onboarding() {
 
 //           <div className="text-center mb-4">
 //             <p className="text-sm text-gray-600">
-//               Step {step} of {totalSteps}: {stepNames[step - 1]}
+//               Step {step} of {TOTAL_STEPS}: {STEP_NAMES[step - 1]}
 //             </p>
 //           </div>
 //         </div>
 
 //         {/* STEP CONTENT */}
 //         {step === 1 && (
-//           <RoleSelection
-//             selectedGender={profileData.gender}
-//             onSelect={handleRoleSelect}
-//           />
+//           <RoleSelection selectedGender={profileData.gender} onSelect={handleRoleSelect} />
 //         )}
+
 //         {step === 2 && (
 //           <WaliInvitation
 //             onContinue={handleWaliContinue}
-//             existingWali={
-//               waliInfo ? { email: waliInfo.email, phone: waliInfo.phone } : null
+//             existingWali={waliInfo ? { email: waliInfo.email, phone: waliInfo.phone } : null}
+//             inviteUrl={
+//               waliInfo?.inviteToken && typeof window !== 'undefined'
+//                 ? `${window.location.origin}/wali-invite?token=${waliInfo.inviteToken}`
+//                 : undefined
 //             }
+//             onResendInvite={async () => {
+//               if (!waliInfo?.id) {
+//                 toast({
+//                   title: 'No invitation found',
+//                   description: 'Please save wali details first, then try again.',
+//                   variant: 'destructive',
+//                 });
+//                 return;
+//               }
+
+//               const { error } = await supabase.functions.invoke('send-wali-invite', {
+//                 body: { wali_link_id: waliInfo.id },
+//               });
+
+//               if (error) {
+//                 console.error('Resend wali invite error', error);
+//                 toast({
+//                   title: 'Could not resend email',
+//                   description: error.message ?? 'Please try again later.',
+//                   variant: 'destructive',
+//                 });
+//               } else {
+//                 toast({
+//                   title: 'Invitation resent',
+//                   description: `We’ve resent the wali invitation to ${waliInfo.email}.`,
+//                 });
+//               }
+//             }}
 //           />
 //         )}
-//         {step === 3 && (
-//           <PhotoUpload onSubmit={handlePhotoUpload} onBack={goBack} />
-//         )}
+
+//         {step === 3 && <PhotoUpload onSubmit={handlePhotoUpload} onBack={goBack} />}
+
 //         {step === 4 && (
-//           <IntroVideoUpload
-//             onSubmit={() => setStep(5)}
-//             onBack={() => setStep(3)}
-//           />
+//           <IntroVideoUpload onSubmit={() => setStep(5)} onBack={() => setStep(3)} />
 //         )}
+
 //         {step === 5 && gender && (
-//           <ProfileForm
-//             gender={gender}
-//             onSubmit={handleProfileSubmit}
-//             onBack={goBack}
-//             initialData={profileData}
-//           />
+//           <ProfileForm gender={gender} onSubmit={handleProfileSubmit} onBack={goBack} initialData={profileData} />
 //         )}
+
 //         {step === 6 && (
-//           <PersonalDetails
-//             onSubmit={handlePersonalDetailsSubmit}
-//             onBack={goBack}
-//             initialData={profileData}
-//           />
+//           <PersonalDetails onSubmit={handlePersonalDetailsSubmit} onBack={goBack} initialData={profileData} />
 //         )}
+
 //         {step === 7 && (
-//           <IslamicPreferences
-//             onSubmit={handlePreferencesSubmit}
-//             onBack={goBack}
-//             initialData={profileData}
-//           />
+//           <IslamicPreferences onSubmit={handlePreferencesSubmit} onBack={goBack} initialData={profileData} />
 //         )}
+
 //         {step === 8 && (
-//           <PhoneVerification
-//             onVerified={handlePhoneVerified}
-//             onSkip={handlePhoneSkip}
-//             onBack={goBack}
-//           />
+//           <PhoneVerification onVerified={handlePhoneVerified} onSkip={handlePhoneSkip} onBack={goBack} />
 //         )}
 
 //         {/* NAVIGATION BAR FOR STEPS 1 & 2 */}
 //         {(step === 1 || step === 2) && (
 //           <div className="mt-8 flex justify-between">
-//             <Button
-//               type="button"
-//               variant="outline"
-//               onClick={handleNavBack}
-//               disabled={step === 1}
-//             >
+//             <Button type="button" variant="outline" onClick={handleNavBack} disabled={step === 1}>
 //               Back
 //             </Button>
-//             <Button
-//               type="button"
-//               onClick={handleNavNext}
-//               disabled={!hasCompletedStep1}
-//             >
+//             <Button type="button" onClick={handleNavNext} disabled={!hasCompletedStep1}>
 //               Next
 //             </Button>
 //           </div>

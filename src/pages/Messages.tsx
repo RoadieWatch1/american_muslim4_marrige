@@ -13,6 +13,10 @@ type BasicProfile = {
   last_name: string | null;
 };
 
+type WaliLink = {
+  ward_user_id: string;
+  status: string;
+};
 
 export default function Messages() {
   const { user } = useAuth();
@@ -32,101 +36,181 @@ export default function Messages() {
 
     setLoading(true);
 
-    // 1) Get all matches for current user
-    const { data: matches, error: matchesError } = await supabase
-      .from('matches')
-      .select('*')
-      .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`);
+    try {
+      // 0) Find wards for whom this user is an active wali
+      const { data: waliLinks, error: waliError } = await supabase
+        .from('wali_links')
+        .select('ward_user_id, status')
+        .eq('wali_user_id', user.id)
+        .eq('status', 'active');
 
-    if (matchesError) {
-      console.error('Error loading matches:', matchesError);
-      setLoading(false);
-      return;
-    }
+      if (waliError) {
+        console.error('Error loading wali links:', waliError);
+      }
 
-    if (!matches || matches.length === 0) {
-      setConversations([]);
-      setLoading(false);
-      return;
-    }
+      const wardIds: string[] =
+        (waliLinks as WaliLink[] | null)?.map((w) => w.ward_user_id) ?? [];
 
-    // 2) For each match, get other user's basic profile, last message, unread count
-    const conversationsData: Conversation[] = await Promise.all(
-      matches.map(async (match: any) => {
-        const otherUserId =
-          match.user1_id === user.id ? match.user2_id : match.user1_id;
+      // 1) Matches where *this user* is directly a participant
+      const { data: matchesForUser, error: matchesErrorUser } = await supabase
+        .from('matches')
+        .select('*')
+        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`);
 
-        // 🔹 Use RPC that bypasses RLS safely
-        const { data: profile, error: profileError } = await supabase
-          .rpc('get_profile_basic_for_message', {
-            p_user_id: otherUserId,
-          })
-          .maybeSingle<BasicProfile>();
+      if (matchesErrorUser) {
+        console.error('Error loading matches for user:', matchesErrorUser);
+      }
 
-        if (profileError) {
-          console.error(
-            'Error loading profile for conversation:',
-            profileError
-          );
-        }
+      // 2) Matches where ANY of the wards is a participant (for wali view)
+      let matchesForWards: any[] = [];
+      if (wardIds.length > 0) {
+        const wardIdList = wardIds.map((id) => `"${id}"`).join(',');
+        const orFilter = `user1_id.in.(${wardIdList}),user2_id.in.(${wardIdList})`;
 
-        const displayFirstName =
-          profile?.first_name || profile?.last_name || 'Member';
-
-        const other_user = {
-          id: profile?.id || otherUserId,
-          firstName: displayFirstName,
-          lastName: profile?.last_name ?? null,
-          photos: [] as string[], // no photos yet; avatar will use initials + color
-        };
-
-        // last message
-        const { data: lastMessage } = await supabase
-          .from('messages')
+        const { data: wardMatches, error: matchesErrorWards } = await supabase
+          .from('matches')
           .select('*')
-          .eq('conversation_id', match.id)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+          .or(orFilter);
 
-        // unread count
-        const { count } = await supabase
-          .from('messages')
-          .select('*', { count: 'exact', head: true })
-          .eq('conversation_id', match.id)
-          .eq('receiver_id', user.id)
-          .eq('is_read', false);
+        if (matchesErrorWards) {
+          console.error('Error loading matches for wards:', matchesErrorWards);
+        } else if (wardMatches) {
+          matchesForWards = wardMatches;
+        }
+      }
 
-        return {
-          id: match.id, // conversation_id is the match.id
-          match_id: match.id,
-          other_user,
-          last_message: lastMessage || undefined,
-          unread_count: count || 0,
-          wali_can_view: true,
-        } as Conversation;
-      })
-    );
+      // 3) Merge matches (avoid duplicates)
+      const matchMap = new Map<string, any>();
+      (matchesForUser || []).forEach((m: any) => matchMap.set(m.id, m));
+      (matchesForWards || []).forEach((m: any) => matchMap.set(m.id, m));
+      const allMatches: any[] = Array.from(matchMap.values());
 
-    // 3) Sort by last message time
-    conversationsData.sort((a, b) => {
-      if (!a.last_message) return 1;
-      if (!b.last_message) return -1;
-      return (
-        new Date(b.last_message.created_at).getTime() -
-        new Date(a.last_message.created_at).getTime()
+      if (!allMatches || allMatches.length === 0) {
+        setConversations([]);
+        setLoading(false);
+        return;
+      }
+
+      // 4) Build Conversation objects
+      const conversationsData: Conversation[] = await Promise.all(
+        allMatches.map(async (match: any) => {
+          const isDirectParticipant =
+            match.user1_id === user.id || match.user2_id === user.id;
+
+          let otherUserId: string;
+
+          if (isDirectParticipant) {
+            // Normal behaviour: show the other person in the match
+            otherUserId =
+              match.user1_id === user.id ? match.user2_id : match.user1_id;
+          } else {
+            // This user is a wali. Determine which side is the ward, and
+            // treat the *other* side as the display user in conversation list.
+            const wardIdInMatch =
+              wardIds.find(
+                (wid) => wid === match.user1_id || wid === match.user2_id
+              ) ?? match.user1_id;
+
+            otherUserId =
+              match.user1_id === wardIdInMatch ? match.user2_id : match.user1_id;
+          }
+
+          // 🔹 Use RPC that bypasses RLS safely to get basic profile
+          const { data: profile, error: profileError } = await supabase
+            .rpc('get_profile_basic_for_message', {
+              p_user_id: otherUserId,
+            })
+            .maybeSingle<BasicProfile>();
+
+          if (profileError) {
+            console.error(
+              'Error loading profile for conversation:',
+              profileError
+            );
+          }
+
+          const displayFirstName =
+            profile?.first_name || profile?.last_name || 'Member';
+
+          const other_user = {
+            id: profile?.id || otherUserId,
+            firstName: displayFirstName,
+            lastName: profile?.last_name ?? null,
+            photos: [] as string[],
+          };
+
+          // last message
+          const { data: lastMessage } = await supabase
+            .from('messages')
+            .select('*')
+            .eq('conversation_id', match.id)
+            .order('created_at', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+
+          // unread count (only for the actual logged-in user, not ward)
+          const { count } = await supabase
+            .from('messages')
+            .select('*', { count: 'exact', head: true })
+            .eq('conversation_id', match.id)
+            .eq('receiver_id', user.id)
+            .eq('is_read', false);
+
+          return {
+            id: match.id, // conversation_id is the match.id
+            match_id: match.id,
+            other_user,
+            last_message: lastMessage || undefined,
+            unread_count: count || 0,
+            // Wali can view but is not a direct participant
+            wali_can_view: !isDirectParticipant,
+          } as Conversation;
+        })
       );
-    });
 
-    setConversations(conversationsData);
+      // 5) Sort by last message time
+      conversationsData.sort((a, b) => {
+        if (!a.last_message) return 1;
+        if (!b.last_message) return -1;
+        return (
+          new Date(b.last_message.created_at).getTime() -
+          new Date(a.last_message.created_at).getTime()
+        );
+      });
 
-    // If nothing selected yet, select first conversation
-    if (!selectedConversation && conversationsData.length > 0) {
-      setSelectedConversation(conversationsData[0]);
+      setConversations(conversationsData);
+
+      // If nothing selected yet, select first conversation
+      if (!selectedConversation && conversationsData.length > 0) {
+        setSelectedConversation(conversationsData[0]);
+      }
+    } catch (err) {
+      console.error('Error loading conversations:', err);
+      setConversations([]);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
+
+
+  const markConversationRead = async (conversationId: string) => {
+    if (!user) return;
+
+    // 1) Update DB
+    await supabase
+      .from("messages")
+      .update({ is_read: true })
+      .eq("conversation_id", conversationId)
+      .eq("receiver_id", user.id)
+      .eq("is_read", false);
+
+    // 2) Update UI immediately (so left badge disappears without reload)
+    setConversations((prev) =>
+      prev.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c))
+    );
+  };
+
+
 
   if (loading) {
     return (
@@ -137,12 +221,13 @@ export default function Messages() {
   }
 
   return (
-    <div className="h-screen flex">
+    <div className="flex"
+      style={{ height: 'calc(100vh - 70px)' }}
+    >
       {/* Conversation List - Desktop always visible, mobile hidden when chat selected */}
       <div
-        className={`w-full md:w-96 border-r ${
-          selectedConversation ? 'hidden md:block' : 'block'
-        }`}
+        className={`w-full md:w-96 border-r ${selectedConversation ? 'hidden md:block' : 'block'
+          }`}
       >
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
@@ -153,8 +238,16 @@ export default function Messages() {
         <ConversationList
           conversations={conversations}
           selectedId={selectedConversation?.id}
-          onSelect={setSelectedConversation}
+          onSelect={(conv) => {
+            setSelectedConversation(conv);
+
+            // if it has unread, mark read and update UI immediately
+            if (conv.unread_count > 0) {
+              markConversationRead(conv.id);
+            }
+          }}
         />
+
       </div>
 
       {/* Chat Interface */}

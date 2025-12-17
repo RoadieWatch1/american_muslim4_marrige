@@ -197,7 +197,7 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
       </div>
 
       {/* Composer */}
-      <form onSubmit={sendMessage} className="border-t p-4 flex gap-2">
+      {/* <form onSubmit={sendMessage} className="border-t p-4 flex gap-2">
         <Input
           value={newMessage}
           onChange={(e) => setNewMessage(e.target.value)}
@@ -207,7 +207,28 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
         <Button type="submit" size="icon" disabled={loading}>
           <Send className="h-5 w-5" />
         </Button>
-      </form>
+      </form> */}
+
+      {/* Composer */}
+      {conversation.wali_can_view ? (
+        <div className="border-t p-4 text-sm text-muted-foreground text-center">
+          You are viewing this conversation as a wali. You can read messages
+          but cannot send messages in this chat.
+        </div>
+      ) : (
+        <form onSubmit={sendMessage} className="border-t p-4 flex gap-2">
+          <Input
+            value={newMessage}
+            onChange={(e) => setNewMessage(e.target.value)}
+            placeholder="Type a message..."
+            className="flex-1"
+          />
+          <Button type="submit" size="icon" disabled={loading}>
+            <Send className="h-5 w-5" />
+          </Button>
+        </form>
+      )}
+
     </div>
   );
 }

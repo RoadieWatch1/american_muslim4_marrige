@@ -1,4 +1,4 @@
-// /auth/callback.tsx
+// /pages/AuthCallback.tsx
 import { useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
@@ -13,8 +13,17 @@ function parseHash(h: string) {
   return out;
 }
 
-/** CREATE/UPDATE profile row + mark email verified */
-async function ensureProfileAndVerifyEmail() {
+type ProfileRow = {
+  id: string;
+  role: string | null;
+  onboarding_completed: boolean | null;
+};
+
+/**
+ * CREATE / UPDATE profile row + mark email verified
+ * and then return the profile row so we know role + onboarding state.
+ */
+async function ensureProfileAndGetProfile(): Promise<ProfileRow | null> {
   const { data, error } = await supabase.auth.getUser();
   if (error) throw error;
 
@@ -23,24 +32,58 @@ async function ensureProfileAndVerifyEmail() {
 
   const { id, email } = user;
 
-  // ⚠️ Important: DO NOT set role or onboarding_completed here.
-  // Let DB defaults handle new users, and keep existing values (e.g. wali).
-  const nowIso = new Date().toISOString();
-
+  // Create/update profile WITHOUT touching onboarding_completed here
   const { error: upsertError } = await supabase.from('profiles').upsert(
     {
       id, // REQUIRED: FK to auth.users.id
       email,
+      // default role for new signups; will be overridden to 'wali' by accept_wali_invite etc.
+      role: 'member',
       email_verified: true,
-      email_verified_at: nowIso,
+      email_verified_at: new Date().toISOString(),
       account_status: 'active',
       status: 'active',
-      updated_at: nowIso,
+      updated_at: new Date().toISOString(),
     },
     { onConflict: 'id' }
   );
 
   if (upsertError) throw upsertError;
+
+  const { data: profile, error: profileError } = await supabase
+    .from('profiles')
+    .select('id, role, onboarding_completed')
+    .eq('id', id)
+    .single<ProfileRow>();
+
+  if (profileError) {
+    console.error('Failed to load profile after upsert:', profileError);
+    return null;
+  }
+
+  return profile;
+}
+
+/** Decide where to send the user after auth based on role + onboarding flag */
+function getPostAuthRedirect(profile: ProfileRow | null): string {
+  const role = profile?.role ?? 'member';
+  const onboardingCompleted = !!profile?.onboarding_completed;
+
+  if (role === 'admin') {
+    return '/admin';
+  }
+
+  if (role === 'wali') {
+    // Wali flow goes to wali console
+    return '/wali-console';
+  }
+
+  // Default: normal member
+  if (!onboardingCompleted) {
+    return '/onboarding';
+  }
+
+  return '/dashboard';
 }
 
 export default function AuthCallback() {
@@ -59,9 +102,9 @@ export default function AuthCallback() {
           const { error } = await supabase.auth.exchangeCodeForSession(code);
           if (error) throw error;
 
-          await ensureProfileAndVerifyEmail();
-          // Go to dashboard; onboarding guard will redirect members if needed
-          return navigate('/dashboard', { replace: true });
+          const profile = await ensureProfileAndGetProfile();
+          const redirectTo = getPostAuthRedirect(profile);
+          return navigate(redirectTo, { replace: true });
         }
 
         // ────────────────────────────────
@@ -70,11 +113,13 @@ export default function AuthCallback() {
         const params = parseHash(window.location.hash || '');
 
         if (params.access_token) {
+          // Session is already set at this point
           const { error } = await supabase.auth.getSession();
           if (error) throw error;
 
-          await ensureProfileAndVerifyEmail();
-          return navigate('/dashboard', { replace: true });
+          const profile = await ensureProfileAndGetProfile();
+          const redirectTo = getPostAuthRedirect(profile);
+          return navigate(redirectTo, { replace: true });
         }
 
         // ────────────────────────────────
@@ -88,13 +133,15 @@ export default function AuthCallback() {
           });
           if (error) throw error;
 
-          await ensureProfileAndVerifyEmail();
-          return navigate('/dashboard', { replace: true });
+          const profile = await ensureProfileAndGetProfile();
+          const redirectTo = getPostAuthRedirect(profile);
+          return navigate(redirectTo, { replace: true });
         }
 
         // ────────────────────────────────
         throw new Error('Missing authentication response');
       } catch (e: any) {
+        console.error('AuthCallback error', e);
         setErr(e?.message || 'Failed to complete sign in');
       }
     })();
@@ -109,9 +156,6 @@ export default function AuthCallback() {
     <div className="mx-auto max-w-md p-6">Signing you in…</div>
   );
 }
-
-
-// http://localhost:8080/wali-invite?token=b82fcb9a-3809-4018-857a-0dc79a5270e3
 
 
 

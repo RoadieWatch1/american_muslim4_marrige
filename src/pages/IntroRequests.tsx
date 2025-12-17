@@ -26,7 +26,7 @@ type IntroRowFromRpc = {
   message: string | null;
   created_at: string;
   wali_id: string | null;
-  wali_approved: boolean | null; // 👈 from RPC
+  wali_approved: boolean | null; // from RPC
   other_user_id: string;
   other_first_name: string | null;
   other_last_name: string | null;
@@ -43,7 +43,7 @@ type IntroWithProfile = {
   message: string | null;
   created_at: string;
   wali_id: string | null;
-  waliApproved: boolean | null; // 👈 mapped field
+  waliApproved: boolean | null;
   otherProfile: {
     name: string;
     cityState: string;
@@ -171,6 +171,8 @@ export default function IntroRequests() {
         .from('intro_requests')
         .update({
           status: nextStatus,
+          // if wali is approving, we also mark wali_approved = true
+          wali_approved: nextStatus === 'approved' ? true : false,
           updated_at: new Date().toISOString(),
         })
         .eq('id', id);
@@ -363,10 +365,16 @@ export default function IntroRequests() {
             ) : (
               <div className="space-y-4">
                 {received.map((req) => {
+                  const isCurrentUserWali = req.wali_id === user.id;
+
+                  console.log('req',req)
+
+                  // Female recipient with wali: show waiting message + hide buttons
                   const waitingForWali =
                     !!req.wali_id &&
                     req.status === 'pending' &&
-                    req.waliApproved === false;
+                    req.waliApproved === false &&
+                    !isCurrentUserWali;
 
                   return (
                     <div
@@ -413,34 +421,48 @@ export default function IntroRequests() {
                           </span>
                         )}
 
-                        {/* Only show Accept / Reject while pending AND wali already approved (or no wali) */}
-                        {req.status === 'pending' && !waitingForWali && (
-                          <div className="flex gap-2 mt-2">
-                            <Button
-                              size="sm"
-                              disabled={updatingId === req.id}
-                              onClick={() =>
-                                handleUpdateStatus(req.id, 'approved')
-                              }
-                            >
-                              Accept
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              disabled={updatingId === req.id}
-                              onClick={() =>
-                                handleUpdateStatus(req.id, 'rejected')
-                              }
-                            >
-                              Reject
-                            </Button>
-                          </div>
-                        )}
+                        {isCurrentUserWali &&
+                          req.status === 'pending' &&
+                          req.waliApproved === false && (
+                            <span className="text-[11px] text-gray-600 text-right">
+                              You are the wali for this sister. Please approve
+                              or reject this introduction.
+                            </span>
+                          )}
 
-                        {req.wali_id && !waitingForWali && (
-                          <span className="text-[11px] text-gray-500">
-                            Wali is attached to this introduction
+                        {/* Accept / Reject logic:
+                           - If NO wali: recipient can act (same as before).
+                           - If a wali EXISTS: only the wali sees these buttons.
+                        */}
+                        {req.status === 'pending' &&
+                          (!req.wali_id || isCurrentUserWali) &&
+                          !waitingForWali && (
+                            <div className="flex gap-2 mt-2">
+                              <Button
+                                size="sm"
+                                disabled={updatingId === req.id}
+                                onClick={() =>
+                                  handleUpdateStatus(req.id, 'approved')
+                                }
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                disabled={updatingId === req.id}
+                                onClick={() =>
+                                  handleUpdateStatus(req.id, 'rejected')
+                                }
+                              >
+                                Reject
+                              </Button>
+                            </div>
+                          )}
+
+                        {req.wali_id && !waitingForWali && !isCurrentUserWali && (
+                          <span className="text-[11px] text-gray-500 text-right">
+                            Wali is attached to this introduction.
                           </span>
                         )}
                       </div>
@@ -455,7 +477,6 @@ export default function IntroRequests() {
     </div>
   );
 }
-
 
 
 
@@ -488,6 +509,7 @@ export default function IntroRequests() {
 //   message: string | null;
 //   created_at: string;
 //   wali_id: string | null;
+//   wali_approved: boolean | null; // 👈 from RPC
 //   other_user_id: string;
 //   other_first_name: string | null;
 //   other_last_name: string | null;
@@ -504,6 +526,7 @@ export default function IntroRequests() {
 //   message: string | null;
 //   created_at: string;
 //   wali_id: string | null;
+//   waliApproved: boolean | null; // 👈 mapped field
 //   otherProfile: {
 //     name: string;
 //     cityState: string;
@@ -536,7 +559,7 @@ export default function IntroRequests() {
 
 // export default function IntroRequests() {
 //   const navigate = useNavigate();
-//   const { user, loading: authLoading } = useAuth(); // ⬅️ use loading from AuthContext
+//   const { user, loading: authLoading } = useAuth();
 
 //   const [loading, setLoading] = useState(true);
 //   const [sent, setSent] = useState<IntroWithProfile[]>([]);
@@ -545,7 +568,6 @@ export default function IntroRequests() {
 //   const [updatingId, setUpdatingId] = useState<string | null>(null);
 
 //   useEffect(() => {
-//     // Wait until auth finished before deciding what to do
 //     if (authLoading) return;
 
 //     if (!user) {
@@ -599,6 +621,7 @@ export default function IntroRequests() {
 //           message: row.message,
 //           created_at: row.created_at,
 //           wali_id: row.wali_id,
+//           waliApproved: row.wali_approved,
 //           otherProfile: {
 //             name,
 //             cityState: cityState || '—',
@@ -641,7 +664,6 @@ export default function IntroRequests() {
 //         return;
 //       }
 
-//       // Refresh from DB so UI always matches reality
 //       await loadData();
 
 //       if (nextStatus === 'approved') {
@@ -707,7 +729,6 @@ export default function IntroRequests() {
 //   }
 
 //   if (!user) {
-//     // Just in case, but normally we’d have redirected already
 //     return null;
 //   }
 
@@ -770,8 +791,7 @@ export default function IntroRequests() {
 //                       </p>
 //                       {req.otherProfile && (
 //                         <p className="text-sm text-gray-600">
-//                           {req.otherProfile.ageLabel} •{' '}
-//                           {req.otherProfile.cityState}
+//                           {req.otherProfile.ageLabel} • {req.otherProfile.cityState}
 //                         </p>
 //                       )}
 //                       <p className="text-xs text-gray-500 mt-1">
@@ -793,8 +813,10 @@ export default function IntroRequests() {
 //                     <div className="flex flex-col items-end gap-2">
 //                       {statusBadge(req.status)}
 //                       {req.wali_id && (
-//                         <span className="text-[11px] text-gray-500">
-//                           Wali involved in this introduction
+//                         <span className="text-[11px] text-gray-500 text-right">
+//                           {req.waliApproved === false
+//                             ? 'Waiting for wali approval before they can respond.'
+//                             : 'Wali involved in this introduction.'}
 //                         </span>
 //                       )}
 //                     </div>
@@ -823,77 +845,91 @@ export default function IntroRequests() {
 //               </p>
 //             ) : (
 //               <div className="space-y-4">
-//                 {received.map((req) => (
-//                   <div
-//                     key={req.id}
-//                     className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
-//                   >
-//                     <div>
-//                       <p className="font-semibold">
-//                         From:{' '}
-//                         {req.otherProfile
-//                           ? req.otherProfile.name
-//                           : 'Unknown member'}
-//                       </p>
-//                       {req.otherProfile && (
-//                         <p className="text-sm text-gray-600">
-//                           {req.otherProfile.ageLabel} •{' '}
-//                           {req.otherProfile.cityState}
+//                 {received.map((req) => {
+//                   const waitingForWali =
+//                     !!req.wali_id &&
+//                     req.status === 'pending' &&
+//                     req.waliApproved === false;
+
+//                   return (
+//                     <div
+//                       key={req.id}
+//                       className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+//                     >
+//                       <div>
+//                         <p className="font-semibold">
+//                           From:{' '}
+//                           {req.otherProfile
+//                             ? req.otherProfile.name
+//                             : 'Unknown member'}
 //                         </p>
-//                       )}
-//                       <p className="text-xs text-gray-500 mt-1">
-//                         Received on {formatDate(req.created_at)}
-//                       </p>
-//                       {req.message && (
-//                         <p className="text-sm text-gray-700 mt-2 italic">
-//                           “{req.message}”
+//                         {req.otherProfile && (
+//                           <p className="text-sm text-gray-600">
+//                             {req.otherProfile.ageLabel} •{' '}
+//                             {req.otherProfile.cityState}
+//                           </p>
+//                         )}
+//                         <p className="text-xs text-gray-500 mt-1">
+//                           Received on {formatDate(req.created_at)}
 //                         </p>
-//                       )}
-//                       <button
-//                         type="button"
-//                         onClick={() => copyId(req.id)}
-//                         className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
-//                       >
-//                         Copy request ID
-//                       </button>
+//                         {req.message && (
+//                           <p className="text-sm text-gray-700 mt-2 italic">
+//                             “{req.message}”
+//                           </p>
+//                         )}
+//                         <button
+//                           type="button"
+//                           onClick={() => copyId(req.id)}
+//                           className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
+//                         >
+//                           Copy request ID
+//                         </button>
+//                       </div>
+
+//                       <div className="flex flex-col items-end gap-2">
+//                         {statusBadge(req.status)}
+
+//                         {waitingForWali && (
+//                           <span className="text-[11px] text-amber-600 text-right">
+//                             Waiting for wali approval. You’ll be able to respond
+//                             once your wali approves this introduction.
+//                           </span>
+//                         )}
+
+//                         {/* Only show Accept / Reject while pending AND wali already approved (or no wali) */}
+//                         {req.status === 'pending' && !waitingForWali && (
+//                           <div className="flex gap-2 mt-2">
+//                             <Button
+//                               size="sm"
+//                               disabled={updatingId === req.id}
+//                               onClick={() =>
+//                                 handleUpdateStatus(req.id, 'approved')
+//                               }
+//                             >
+//                               Accept
+//                             </Button>
+//                             <Button
+//                               size="sm"
+//                               variant="outline"
+//                               disabled={updatingId === req.id}
+//                               onClick={() =>
+//                                 handleUpdateStatus(req.id, 'rejected')
+//                               }
+//                             >
+//                               Reject
+//                             </Button>
+//                           </div>
+//                         )}
+
+//                         {req.wali_id && !waitingForWali && (
+//                           <span className="text-[11px] text-gray-500">
+//                             Wali is attached to this introduction
+//                           </span>
+//                         )}
+//                       </div>
 //                     </div>
-
-//                     <div className="flex flex-col items-end gap-2">
-//                       {statusBadge(req.status)}
-
-//                       {/* Only show Accept / Reject while pending */}
-//                       {req.status === 'pending' && (
-//                         <div className="flex gap-2 mt-2">
-//                           <Button
-//                             size="sm"
-//                             disabled={updatingId === req.id}
-//                             onClick={() =>
-//                               handleUpdateStatus(req.id, 'approved')
-//                             }
-//                           >
-//                             Accept
-//                           </Button>
-//                           <Button
-//                             size="sm"
-//                             variant="outline"
-//                             disabled={updatingId === req.id}
-//                             onClick={() =>
-//                               handleUpdateStatus(req.id, 'rejected')
-//                             }
-//                           >
-//                             Reject
-//                           </Button>
-//                         </div>
-//                       )}
-
-//                       {req.wali_id && (
-//                         <span className="text-[11px] text-gray-500">
-//                           Wali is attached to this introduction
-//                         </span>
-//                       )}
-//                     </div>
-//                   </div>
-//                 ))}
+//                   );
+//                 })}
 //               </div>
 //             )}
 //           </CardContent>

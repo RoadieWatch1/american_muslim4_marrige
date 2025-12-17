@@ -4,6 +4,7 @@ import type { User, Session } from '@supabase/supabase-js';
 import { supabase } from '@/lib/supabase';
 
 interface Profile {
+  subscription_status: string;
   wali_required: any;
   profile_photo_url: any;
   subscription_tier: string;
