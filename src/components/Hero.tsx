@@ -46,9 +46,7 @@ export const Hero: React.FC = () => {
                 <span className="text-primary">Our Structure.</span>
               </h1>
 
-             <p className="mt-6 text-xl text-accent/90 leading-relaxed">
-
-
+             <p className="mt-6 text-xl text-foreground/85 leading-relaxed">
                 An exclusive, chaperone-friendly platform where commitment,
                 faith, and family blessing come first.
               </p>
