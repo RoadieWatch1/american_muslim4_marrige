@@ -33,6 +33,9 @@ interface ChatInterfaceProps {
   onBack: () => void;
 }
 
+// Consider user “offline” if they haven’t been seen in X minutes
+const OFFLINE_MINUTES = 2;
+
 export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
@@ -66,13 +69,10 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
               // if this client is receiver, we mark as read
               void markAsRead();
             } else if (payload.eventType === 'UPDATE') {
-              // 🔹 keep read-status in sync (double tick)
               setMessages((prev) =>
                 prev.map((m) =>
                   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                  m.id === (payload.new as any).id
-                    ? (payload.new as Message)
-                    : m
+                  m.id === (payload.new as any).id ? (payload.new as Message) : m
                 )
               );
             }
@@ -108,6 +108,55 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
       .eq('receiver_id', user.id);
   };
 
+  function isOfflineByLastSeen(lastSeenAt?: string | null) {
+    if (!lastSeenAt) return true; // if never seen, treat as offline
+    const last = new Date(lastSeenAt).getTime();
+    const cutoff = Date.now() - OFFLINE_MINUTES * 60 * 1000;
+    return last < cutoff;
+  }
+
+  const shouldSendEmailForReceiver = async (receiverId: string) => {
+    // 1) Load receiver presence + prefs related fields (email fetched separately below)
+    const { data: receiver, error: receiverErr } = await supabase
+      .from('profiles')
+      .select('id, email, last_seen_at, email_notifications_enabled, notify_messages, notification_frequency')
+      .eq('id', receiverId)
+      .single();
+
+    if (receiverErr) throw receiverErr;
+
+    // basic checks
+    if (!receiver?.email) return { ok: false as const, email: null as string | null, reason: 'no_email' };
+    if (!receiver.email_notifications_enabled) return { ok: false as const, email: receiver.email, reason: 'emails_disabled' };
+    if (!receiver.notify_messages) return { ok: false as const, email: receiver.email, reason: 'message_emails_disabled' };
+    if ((receiver.notification_frequency || 'instant') !== 'instant')
+      return { ok: false as const, email: receiver.email, reason: 'digest_mode' };
+
+    // 2) Presence check
+    const offline = isOfflineByLastSeen(receiver.last_seen_at);
+    if (!offline) return { ok: false as const, email: receiver.email, reason: 'user_online' };
+
+    // 3) Anti-spam: if there are already unread messages for receiver in this conversation, skip email
+    // (means we already notified once, or they’re away and messages are piling up)
+    const { count, error: unreadErr } = await supabase
+      .from('messages')
+      .select('*', { count: 'exact', head: true })
+      .eq('conversation_id', conversation.id)
+      .eq('receiver_id', receiverId)
+      .eq('is_read', false);
+
+    if (unreadErr) {
+      // don’t block sending on count failure; just proceed
+      return { ok: true as const, email: receiver.email, reason: 'offline_unread_check_failed' };
+    }
+
+    if ((count || 0) > 0) {
+      return { ok: false as const, email: receiver.email, reason: 'already_has_unread' };
+    }
+
+    return { ok: true as const, email: receiver.email, reason: 'offline_no_unread' };
+  };
+
   const sendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newMessage.trim() || loading || !user) return;
@@ -116,25 +165,52 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
 
     const messageContent = newMessage.trim();
     const messagePreview =
-      messageContent.length > 50
-        ? messageContent.substring(0, 50) + '...'
-        : messageContent;
+      messageContent.length > 50 ? messageContent.substring(0, 50) + '...' : messageContent;
 
-    await supabase.from('messages').insert({
-      conversation_id: conversation.id,
-      sender_id: user.id,
-      receiver_id: conversation.other_user.id,
-      content: messageContent,
-    });
+    try {
+      const receiverId = conversation.other_user.id;
 
-    await notifyNewMessage(
-      conversation.other_user.id,
-      user.user_metadata?.first_name || 'Someone',
-      messagePreview
-    );
+      // 1) Decide if we should email BEFORE inserting message
+      //    (so unread_count check is “0” for receiver at this moment)
+      let emailDecision: { ok: boolean; email: string | null; reason: string } = {
+        ok: false,
+        email: null,
+        reason: 'unknown',
+      };
 
-    setNewMessage('');
-    setLoading(false);
+      try {
+        emailDecision = await shouldSendEmailForReceiver(receiverId);
+      } catch (e2) {
+        // don’t block message send if this fails
+        console.warn('shouldSendEmailForReceiver failed:', e2);
+      }
+
+      // 2) Insert message
+      const { error: insertError } = await supabase.from('messages').insert({
+        conversation_id: conversation.id,
+        sender_id: user.id,
+        receiver_id: receiverId,
+        content: messageContent,
+      });
+
+      if (insertError) throw insertError;
+
+      // 3) Send email only if receiver is offline
+      if (emailDecision.ok && emailDecision.email) {
+        await notifyNewMessage({
+          userId: receiverId,
+          email: emailDecision.email,
+          senderName: user.user_metadata?.first_name || 'Someone',
+          message: messagePreview,
+        });
+      }
+    } catch (err) {
+      console.error('sendMessage error:', err);
+      // optional toast
+    } finally {
+      setNewMessage('');
+      setLoading(false);
+    }
   };
 
   useEffect(() => {
@@ -149,14 +225,10 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b p-4 flex items-center gap-3">
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={onBack}
-          className="md:hidden"
-        >
+        <Button variant="ghost" size="icon" onClick={onBack} className="md:hidden">
           <ArrowLeft className="h-5 w-5" />
         </Button>
+
         <Avatar>
           {conversation.other_user.photos?.[0] && (
             <AvatarImage src={conversation.other_user.photos[0]} />
@@ -165,55 +237,30 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
             {initial}
           </AvatarFallback>
         </Avatar>
+
         <div className="flex-1">
           <h3 className="font-semibold">{displayName}</h3>
-          {isTyping && (
-            <p className="text-xs text-muted-foreground">typing...</p>
-          )}
+          {isTyping && <p className="text-xs text-muted-foreground">typing...</p>}
         </div>
-        <Button
-          variant="ghost"
-          size="icon"
-          onClick={() => setWaliVisible((v) => !v)}
-        >
-          {waliVisible ? (
-            <Eye className="h-5 w-5" />
-          ) : (
-            <EyeOff className="h-5 w-5" />
-          )}
+
+        <Button variant="ghost" size="icon" onClick={() => setWaliVisible((v) => !v)}>
+          {waliVisible ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
         </Button>
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
         {messages.map((msg) => (
-          <MessageBubble
-            key={msg.id}
-            message={msg}
-            isSender={msg.sender_id === user?.id}
-          />
+          <MessageBubble key={msg.id} message={msg} isSender={msg.sender_id === user?.id} />
         ))}
         <div ref={messagesEndRef} />
       </div>
 
       {/* Composer */}
-      {/* <form onSubmit={sendMessage} className="border-t p-4 flex gap-2">
-        <Input
-          value={newMessage}
-          onChange={(e) => setNewMessage(e.target.value)}
-          placeholder="Type a message..."
-          className="flex-1"
-        />
-        <Button type="submit" size="icon" disabled={loading}>
-          <Send className="h-5 w-5" />
-        </Button>
-      </form> */}
-
-      {/* Composer */}
       {conversation.wali_can_view ? (
         <div className="border-t p-4 text-sm text-muted-foreground text-center">
-          You are viewing this conversation as a wali. You can read messages
-          but cannot send messages in this chat.
+          You are viewing this conversation as a wali. You can read messages but cannot send messages
+          in this chat.
         </div>
       ) : (
         <form onSubmit={sendMessage} className="border-t p-4 flex gap-2">
@@ -228,7 +275,6 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
           </Button>
         </form>
       )}
-
     </div>
   );
 }

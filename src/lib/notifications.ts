@@ -1,141 +1,248 @@
-import { supabase } from './supabase';
+// src/lib/notifications.ts
+import { supabase } from "./supabase";
 
-interface NotificationData {
-  userId: string;
-  type: 'match' | 'message' | 'wali_approval' | 'wali_invitation' | 'intro_request';
-  title: string;
-  message: string;
-  metadata?: any;
-}
+type EmailType = "wali_invitation" | "intro_request" | "match" | "new_message";
 
-export async function sendNotification(data: NotificationData) {
-  try {
-    // Get user's notification preferences
-    const { data: profile, error: profileError } = await supabase
-      .from('profiles')
-      .select('email, email_notifications_enabled, notification_frequency, notify_matches, notify_messages, notify_wali_invitations, notify_intro_requests')
-      .eq('id', data.userId)
-      .single();
+type NotificationData = {
+  userId: string; // recipient user id
+  type: EmailType;
+  toEmail: string; // recipient email
+  data: Record<string, any>; // payload used by the template
+};
 
-    if (profileError || !profile) {
-      console.error('Error fetching profile:', profileError);
-      return;
-    }
+export async function sendNotificationEmail(payload: NotificationData) {
+  const { userId, type, toEmail, data } = payload;
 
-    // Check if notifications are enabled
-    if (!profile.email_notifications_enabled) {
-      return;
-    }
-
-    // Check if this specific notification type is enabled
-    const typeEnabled = {
-      match: profile.notify_matches,
-      message: profile.notify_messages,
-      wali_approval: profile.notify_wali_invitations,
-      wali_invitation: profile.notify_wali_invitations,
-      intro_request: profile.notify_intro_requests,
-    }[data.type];
-
-    if (!typeEnabled) {
-      return;
-    }
-
-    // If instant notifications, send immediately
-    if (profile.notification_frequency === 'instant') {
-      await sendInstantEmail(profile.email, data);
-    } else {
-      // Queue for digest
-      await queueNotification(data);
-    }
-  } catch (error) {
-    console.error('Error sending notification:', error);
-  }
-}
-
-async function sendInstantEmail(email: string, data: NotificationData) {
-  try {
-    const { error } = await supabase.functions.invoke('send-notification-email', {
-      body: {
-        to: email,
-        type: data.type,
-        data: {
-          ...data.metadata,
-          appUrl: window.location.origin,
-        },
+  const { error } = await supabase.functions.invoke("send-notification-email", {
+    body: {
+      type,
+      to: toEmail,
+      recipientUserId: userId,
+      data: {
+        ...data,
+        loginUrl: data.loginUrl || `${window.location.origin}/dashboard`,
       },
-    });
+    },
+  });
 
-    if (error) throw error;
-  } catch (error) {
-    console.error('Error sending instant email:', error);
+  if (error) throw error;
+}
+
+/* ──────────────────────────────────────────────────────────────
+ * Offline detection (based on profiles.last_seen_at heartbeat)
+ * ────────────────────────────────────────────────────────────── */
+
+const OFFLINE_AFTER_MINUTES = 2; // adjust later (e.g. 2–5 mins)
+
+function isOlderThanMinutes(iso: string | null | undefined, minutes: number) {
+  if (!iso) return true; // if missing, assume offline
+  const t = new Date(iso).getTime();
+  if (!Number.isFinite(t)) return true;
+  return Date.now() - t > minutes * 60 * 1000;
+}
+
+async function shouldEmailNewMessage(recipientUserId: string) {
+  // If user recently active -> do NOT email
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("last_seen_at")
+    .eq("id", recipientUserId)
+    .maybeSingle();
+
+  if (error) {
+    console.warn("shouldEmailNewMessage: failed to load last_seen_at:", error.message);
+    // safest behavior: still send email (so you don't miss notifications)
+    return true;
   }
+
+  return isOlderThanMinutes(data?.last_seen_at, OFFLINE_AFTER_MINUTES);
 }
 
-async function queueNotification(data: NotificationData) {
-  try {
-    const { error } = await supabase
-      .from('notification_queue')
-      .insert({
-        user_id: data.userId,
-        notification_type: data.type,
-        title: data.title,
-        message: data.message,
-        metadata: data.metadata || {},
-      });
+/** Helpers */
 
-    if (error) throw error;
-  } catch (error) {
-    console.error('Error queueing notification:', error);
-  }
-}
-
-// Helper functions for specific notification types
-export async function notifyNewMatch(userId: string, matchName: string) {
-  await sendNotification({
-    userId,
-    type: 'match',
-    title: 'New Match!',
-    message: `You have a mutual match with ${matchName}`,
-    metadata: { matchName },
+export async function notifyNewMatch(params: {
+  userId: string;
+  email: string;
+  matchName: string;
+}) {
+  return sendNotificationEmail({
+    userId: params.userId,
+    type: "match",
+    toEmail: params.email,
+    data: {
+      matchName: params.matchName,
+      loginUrl: `${window.location.origin}/messages`,
+    },
   });
 }
 
-export async function notifyNewMessage(userId: string, senderName: string, messagePreview: string) {
-  await sendNotification({
-    userId,
-    type: 'message',
-    title: 'New Message',
-    message: `${senderName}: ${messagePreview}`,
-    metadata: { senderName, messagePreview },
+export async function notifyNewMessage(params: {
+  userId: string;
+  email: string;
+  senderName: string;
+  message: string; // full or preview, Edge template already trims
+}) {
+  // ✅ only email if recipient looks offline
+  const okToEmail = await shouldEmailNewMessage(params.userId);
+  if (!okToEmail) return;
+
+  return sendNotificationEmail({
+    userId: params.userId,
+    type: "new_message",
+    toEmail: params.email,
+    data: {
+      senderName: params.senderName,
+      message: params.message,
+      loginUrl: `${window.location.origin}/messages`,
+    },
   });
 }
 
-export async function notifyWaliApproval(userId: string, waliName: string, matchName: string) {
-  await sendNotification({
-    userId,
-    type: 'wali_approval',
-    title: 'Wali Approval',
-    message: `${waliName} has approved your connection with ${matchName}`,
-    metadata: { waliName, matchName },
+export async function notifyIntroRequest(params: {
+  userId: string; // recipient
+  email: string;
+  waliName?: string;
+  requesterName: string;
+  recipientName: string;
+  message?: string;
+}) {
+  return sendNotificationEmail({
+    userId: params.userId,
+    type: "intro_request",
+    toEmail: params.email,
+    data: {
+      waliName: params.waliName,
+      requesterName: params.requesterName,
+      recipientName: params.recipientName,
+      message: params.message,
+      loginUrl: `${window.location.origin}/wali-console`,
+    },
   });
 }
 
-export async function notifyWaliInvitation(userId: string, userName: string) {
-  await sendNotification({
-    userId,
-    type: 'wali_invitation',
-    title: 'Wali Invitation',
-    message: `${userName} has invited you to be their wali`,
-    metadata: { userName },
+export async function notifyWaliInvitation(params: {
+  userId: string; // wali user id if exists
+  email: string;
+  womanName: string;
+  waliName?: string;
+}) {
+  return sendNotificationEmail({
+    userId: params.userId,
+    type: "wali_invitation",
+    toEmail: params.email,
+    data: {
+      womanName: params.womanName,
+      waliName: params.waliName || "Guardian",
+      loginUrl: `${window.location.origin}/wali-console`,
+    },
   });
 }
 
-export async function notifyIntroRequest(userId: string, requesterName: string) {
-  await sendNotification({
-    userId,
-    type: 'intro_request',
-    title: 'Introduction Request',
-    message: `${requesterName} has requested an introduction`,
-    metadata: { requesterName },
-  });
-}
+
+
+
+// // src/lib/notifications.ts
+// import { supabase } from "./supabase";
+
+// type EmailType = "wali_invitation" | "intro_request" | "match" | "new_message";
+
+// type NotificationData = {
+//   userId: string;               // recipient user id
+//   type: EmailType;
+//   toEmail: string;              // recipient email
+//   data: Record<string, any>;    // payload used by the template
+// };
+
+// export async function sendNotificationEmail(payload: NotificationData) {
+//   const { userId, type, toEmail, data } = payload;
+
+//   const { error } = await supabase.functions.invoke("send-notification-email", {
+//     body: {
+//       type,
+//       to: toEmail,
+//       recipientUserId: userId,
+//       data: {
+//         ...data,
+//         loginUrl: data.loginUrl || `${window.location.origin}/dashboard`,
+//       },
+//     },
+//   });
+
+//   if (error) throw error;
+// }
+
+// /** Helpers */
+
+// export async function notifyNewMatch(params: {
+//   userId: string;
+//   email: string;
+//   matchName: string;
+// }) {
+//   return sendNotificationEmail({
+//     userId: params.userId,
+//     type: "match",
+//     toEmail: params.email,
+//     data: {
+//       matchName: params.matchName,
+//       loginUrl: `${window.location.origin}/messages`,
+//     },
+//   });
+// }
+
+// export async function notifyNewMessage(params: {
+//   userId: string;
+//   email: string;
+//   senderName: string;
+//   message: string; // full or preview, Edge template already trims
+// }) {
+//   return sendNotificationEmail({
+//     userId: params.userId,
+//     type: "new_message",
+//     toEmail: params.email,
+//     data: {
+//       senderName: params.senderName,
+//       message: params.message,
+//       loginUrl: `${window.location.origin}/messages`,
+//     },
+//   });
+// }
+
+// export async function notifyIntroRequest(params: {
+//   userId: string; // recipient
+//   email: string;
+//   waliName?: string;
+//   requesterName: string;
+//   recipientName: string;
+//   message?: string;
+// }) {
+//   return sendNotificationEmail({
+//     userId: params.userId,
+//     type: "intro_request",
+//     toEmail: params.email,
+//     data: {
+//       waliName: params.waliName,
+//       requesterName: params.requesterName,
+//       recipientName: params.recipientName,
+//       message: params.message,
+//       loginUrl: `${window.location.origin}/wali-console`,
+//     },
+//   });
+// }
+
+// export async function notifyWaliInvitation(params: {
+//   userId: string; // wali user id if exists (or skip recipientUserId if wali not a user yet)
+//   email: string;
+//   womanName: string;
+//   waliName?: string;
+// }) {
+//   return sendNotificationEmail({
+//     userId: params.userId,
+//     type: "wali_invitation",
+//     toEmail: params.email,
+//     data: {
+//       womanName: params.womanName,
+//       waliName: params.waliName || "Guardian",
+//       loginUrl: `${window.location.origin}/wali-console`,
+//     },
+//   });
+// }

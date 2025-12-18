@@ -1,5 +1,5 @@
 // src/pages/Messages.tsx
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Conversation } from '@/types';
 import { ConversationList } from '@/components/messages/ConversationList';
 import { ChatInterface } from '@/components/messages/ChatInterface';
@@ -18,6 +18,8 @@ type WaliLink = {
   status: string;
 };
 
+const LAST_SEEN_PING_MS = 30_000;
+
 export default function Messages() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -25,11 +27,137 @@ export default function Messages() {
     useState<Conversation | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // keep latest selected id for realtime callback
+  const selectedIdRef = useRef<string | null>(null);
+  useEffect(() => {
+    selectedIdRef.current = selectedConversation?.id ?? null;
+  }, [selectedConversation?.id]);
+
+  // ─────────────────────────────────────────────────────────────
+  // Presence: keep profiles.last_seen_at fresh while user is in Messages
+  // ─────────────────────────────────────────────────────────────
   useEffect(() => {
     if (!user) return;
-    loadConversations();
+
+    let interval: number | null = null;
+
+    const ping = async () => {
+      try {
+        // Your edge function should set profiles.last_seen_at for auth user
+        const { error } = await supabase.functions.invoke('touch_last_seen', {
+          body: {},
+        });
+        if (error) console.warn('touch_last_seen error:', error);
+      } catch (e) {
+        console.warn('touch_last_seen failed:', e);
+      }
+    };
+
+    // initial ping immediately
+    void ping();
+
+    // periodic ping
+    interval = window.setInterval(() => {
+      void ping();
+    }, LAST_SEEN_PING_MS);
+
+    // when user returns to tab, ping again
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void ping();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      if (interval) window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user?.id]);
+
+  useEffect(() => {
+    if (!user) return;
+
+    let chan: ReturnType<typeof supabase.channel> | null = null;
+
+    const init = async () => {
+      await loadConversations();
+
+      // realtime: update conversation list when new messages arrive
+      chan = supabase
+        .channel(`messages-inbox:${user.id}`)
+        .on(
+          'postgres_changes',
+          { event: 'INSERT', schema: 'public', table: 'messages' },
+          (payload) => {
+            const newMsg = payload.new as any;
+            const convId = newMsg.conversation_id as string;
+
+            setConversations((prev) => {
+              const idx = prev.findIndex((c) => c.id === convId);
+              if (idx === -1) return prev;
+
+              const copy = [...prev];
+              const existing = copy[idx];
+
+              const isIncomingToMe =
+                newMsg.receiver_id === user.id &&
+                newMsg.sender_id !== user.id;
+
+              const isCurrentlyOpen = selectedIdRef.current === convId;
+
+              copy[idx] = {
+                ...existing,
+                last_message: newMsg,
+                unread_count: isIncomingToMe
+                  ? isCurrentlyOpen
+                    ? 0
+                    : (existing.unread_count || 0) + 1
+                  : existing.unread_count || 0,
+              } as Conversation;
+
+              // move updated conversation to top
+              const updated = copy.splice(idx, 1)[0];
+              return [updated, ...copy];
+            });
+
+            // if the user is currently viewing this conversation, mark it read immediately
+            if (
+              newMsg.receiver_id === user.id &&
+              selectedIdRef.current === convId
+            ) {
+              void markConversationRead(convId);
+            }
+          }
+        )
+        .on(
+          'postgres_changes',
+          { event: 'UPDATE', schema: 'public', table: 'messages' },
+          (payload) => {
+            const msg = payload.new as any;
+            const convId = msg.conversation_id as string;
+
+            // keep last_message in sync if the updated row is the last one we show
+            setConversations((prev) =>
+              prev.map((c) => {
+                if (c.id !== convId) return c;
+                if (!c.last_message) return c;
+
+                return c.last_message.id === msg.id
+                  ? ({ ...c, last_message: msg } as Conversation)
+                  : c;
+              })
+            );
+          }
+        )
+        .subscribe();
+    };
+
+    void init();
+
+    return () => {
+      if (chan) supabase.removeChannel(chan);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id]);
 
   const loadConversations = async () => {
     if (!user) return;
@@ -44,9 +172,7 @@ export default function Messages() {
         .eq('wali_user_id', user.id)
         .eq('status', 'active');
 
-      if (waliError) {
-        console.error('Error loading wali links:', waliError);
-      }
+      if (waliError) console.error('Error loading wali links:', waliError);
 
       const wardIds: string[] =
         (waliLinks as WaliLink[] | null)?.map((w) => w.ward_user_id) ?? [];
@@ -100,12 +226,9 @@ export default function Messages() {
           let otherUserId: string;
 
           if (isDirectParticipant) {
-            // Normal behaviour: show the other person in the match
             otherUserId =
               match.user1_id === user.id ? match.user2_id : match.user1_id;
           } else {
-            // This user is a wali. Determine which side is the ward, and
-            // treat the *other* side as the display user in conversation list.
             const wardIdInMatch =
               wardIds.find(
                 (wid) => wid === match.user1_id || wid === match.user2_id
@@ -115,11 +238,9 @@ export default function Messages() {
               match.user1_id === wardIdInMatch ? match.user2_id : match.user1_id;
           }
 
-          // 🔹 Use RPC that bypasses RLS safely to get basic profile
+          // basic profile via RPC
           const { data: profile, error: profileError } = await supabase
-            .rpc('get_profile_basic_for_message', {
-              p_user_id: otherUserId,
-            })
+            .rpc('get_profile_basic_for_message', { p_user_id: otherUserId })
             .maybeSingle<BasicProfile>();
 
           if (profileError) {
@@ -148,7 +269,7 @@ export default function Messages() {
             .limit(1)
             .maybeSingle();
 
-          // unread count (only for the actual logged-in user, not ward)
+          // unread count (only for the actual logged-in user)
           const { count } = await supabase
             .from('messages')
             .select('*', { count: 'exact', head: true })
@@ -157,12 +278,11 @@ export default function Messages() {
             .eq('is_read', false);
 
           return {
-            id: match.id, // conversation_id is the match.id
+            id: match.id,
             match_id: match.id,
             other_user,
             last_message: lastMessage || undefined,
             unread_count: count || 0,
-            // Wali can view but is not a direct participant
             wali_can_view: !isDirectParticipant,
           } as Conversation;
         })
@@ -180,7 +300,6 @@ export default function Messages() {
 
       setConversations(conversationsData);
 
-      // If nothing selected yet, select first conversation
       if (!selectedConversation && conversationsData.length > 0) {
         setSelectedConversation(conversationsData[0]);
       }
@@ -192,25 +311,22 @@ export default function Messages() {
     }
   };
 
-
   const markConversationRead = async (conversationId: string) => {
     if (!user) return;
 
     // 1) Update DB
     await supabase
-      .from("messages")
+      .from('messages')
       .update({ is_read: true })
-      .eq("conversation_id", conversationId)
-      .eq("receiver_id", user.id)
-      .eq("is_read", false);
+      .eq('conversation_id', conversationId)
+      .eq('receiver_id', user.id)
+      .eq('is_read', false);
 
-    // 2) Update UI immediately (so left badge disappears without reload)
+    // 2) Update UI immediately
     setConversations((prev) =>
       prev.map((c) => (c.id === conversationId ? { ...c, unread_count: 0 } : c))
     );
   };
-
-
 
   if (loading) {
     return (
@@ -221,13 +337,12 @@ export default function Messages() {
   }
 
   return (
-    <div className="flex"
-      style={{ height: 'calc(100vh - 70px)' }}
-    >
-      {/* Conversation List - Desktop always visible, mobile hidden when chat selected */}
+    <div className="flex" style={{ height: 'calc(100vh - 70px)' }}>
+      {/* Conversation List */}
       <div
-        className={`w-full md:w-96 border-r ${selectedConversation ? 'hidden md:block' : 'block'
-          }`}
+        className={`w-full md:w-96 border-r ${
+          selectedConversation ? 'hidden md:block' : 'block'
+        }`}
       >
         <div className="p-4 border-b">
           <div className="flex items-center gap-2">
@@ -235,6 +350,7 @@ export default function Messages() {
             <h1 className="text-2xl font-bold">Messages</h1>
           </div>
         </div>
+
         <ConversationList
           conversations={conversations}
           selectedId={selectedConversation?.id}
@@ -242,12 +358,9 @@ export default function Messages() {
             setSelectedConversation(conv);
 
             // if it has unread, mark read and update UI immediately
-            if (conv.unread_count > 0) {
-              markConversationRead(conv.id);
-            }
+            if (conv.unread_count > 0) void markConversationRead(conv.id);
           }}
         />
-
       </div>
 
       {/* Chat Interface */}
