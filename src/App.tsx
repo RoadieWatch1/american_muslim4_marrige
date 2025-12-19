@@ -28,6 +28,7 @@ import AuthCallback from "./pages/AuthCallback";
 import IntroRequests from "./pages/IntroRequests";
 import WaliInvite from "./pages/WaliInvite";
 import SubscriptionUpgradePage from "./pages/SubscriptionUpgradePage";
+import BillingSuccessPage from "./pages/BillingSuccessPage";
 
 const queryClient = new QueryClient();
 
@@ -67,6 +68,7 @@ const App = () => (
                   <Route path="/profile" element={<Profile />} />
                   <Route path="/wali-console" element={<WaliConsole />} />
                   <Route path="/pricing" element={<SubscriptionUpgradePage />} />
+                  <Route path="/billing/success" element={<BillingSuccessPage />} />
                   <Route
                     path="/wali-guardian"
                     element={<WaliGuardianConsole />}

@@ -42,7 +42,7 @@ type WaliLinkRow = {
 } | null;
 
 // ✅ Code-only flag (no env needed). Flip to true later when Twilio is ready.
-const PHONE_VERIFICATION_ENABLED = false;
+const PHONE_VERIFICATION_ENABLED = true;
 
 const ALL_STEP_NAMES = [
   'Gender',

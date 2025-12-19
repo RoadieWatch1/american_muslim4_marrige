@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { startCheckout } from "@/lib/startCheckout";
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
@@ -81,53 +82,102 @@ export default function SubscriptionUpgradePage() {
 
   const currentPlan = plans.find((p) => p.id === currentPlanId);
 
+  // const handleChangePlan = async (planId: PlanId) => {
+  //   if (!user) {
+  //     navigate('/login');
+  //     return;
+  //   }
+
+  //   if (planId === currentPlanId) {
+  //     toast.info(`You are already on the ${currentPlan?.name ?? 'current'} plan.`);
+  //     return;
+  //   }
+
+  //   try {
+  //     setLoadingPlanId(planId);
+
+  //     const nextStatus = planId === 'free' ? 'inactive' : 'active';
+
+  //     const { error } = await supabase
+  //       .from('profiles')
+  //       .update({
+  //         subscription_tier: planId,
+  //         subscription_status: nextStatus,
+  //         subscription_end_date: null,
+  //         updated_at: new Date().toISOString(),
+  //       })
+  //       .eq('id', user.id);
+
+  //     if (error) {
+  //       console.error('Error updating subscription:', error);
+  //       toast.error('Could not update your plan. Please try again.');
+  //       return;
+  //     }
+
+  //     await refreshProfile?.();
+
+  //     const newPlan = plans.find((p) => p.id === planId);
+  //     toast.success(
+  //       planId === 'free'
+  //         ? 'You are now on the Free plan.'
+  //         : `Successfully switched to the ${newPlan?.name ?? 'new'} plan.`
+  //     );
+  //   } catch (err) {
+  //     console.error(err);
+  //     toast.error('Something went wrong. Please try again.');
+  //   } finally {
+  //     setLoadingPlanId(null);
+  //   }
+  // };
+
   const handleChangePlan = async (planId: PlanId) => {
-    if (!user) {
-      navigate('/login');
+  if (!user) {
+    navigate("/login");
+    return;
+  }
+
+  if (planId === currentPlanId) {
+    toast.info(`You are already on the ${currentPlan?.name ?? "current"} plan.`);
+    return;
+  }
+
+  try {
+    setLoadingPlanId(planId);
+
+    // ✅ Paid plans must go through Stripe Checkout
+    if (planId === "silver" || planId === "gold") {
+      await startCheckout(planId); // redirects
       return;
     }
 
-    if (planId === currentPlanId) {
-      toast.info(`You are already on the ${currentPlan?.name ?? 'current'} plan.`);
+    // ✅ Free plan: downgrade locally (optional)
+    const { error } = await supabase
+      .from("profiles")
+      .update({
+        subscription_tier: "free",
+        subscription_status: "inactive",
+        stripe_subscription_id: null,
+        subscription_end_date: null,
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", user.id);
+
+    if (error) {
+      console.error("Error updating subscription:", error);
+      toast.error("Could not update your plan. Please try again.");
       return;
     }
 
-    try {
-      setLoadingPlanId(planId);
+    await refreshProfile?.();
+    toast.success("You are now on the Free plan.");
+  } catch (err: any) {
+    console.error(err);
+    toast.error(err?.message || "Something went wrong. Please try again.");
+  } finally {
+    setLoadingPlanId(null);
+  }
+};
 
-      const nextStatus = planId === 'free' ? 'inactive' : 'active';
-
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          subscription_tier: planId,
-          subscription_status: nextStatus,
-          subscription_end_date: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
-
-      if (error) {
-        console.error('Error updating subscription:', error);
-        toast.error('Could not update your plan. Please try again.');
-        return;
-      }
-
-      await refreshProfile?.();
-
-      const newPlan = plans.find((p) => p.id === planId);
-      toast.success(
-        planId === 'free'
-          ? 'You are now on the Free plan.'
-          : `Successfully switched to the ${newPlan?.name ?? 'new'} plan.`
-      );
-    } catch (err) {
-      console.error(err);
-      toast.error('Something went wrong. Please try again.');
-    } finally {
-      setLoadingPlanId(null);
-    }
-  };
 
   if (!user || !profile) {
     return (

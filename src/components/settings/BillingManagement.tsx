@@ -15,6 +15,7 @@ type ProfileSubscription = {
   subscription_tier: PlanId | null;
   subscription_status: 'active' | 'inactive' | string | null;
   subscription_end_date: string | null; // ISO string or null
+  subscription_cancel_at_period_end: boolean | null;
 };
 
 export default function BillingManagement() {
@@ -36,7 +37,9 @@ export default function BillingManagement() {
     try {
       const { data, error } = await supabase
         .from('profiles')
-        .select('subscription_tier, subscription_status, subscription_end_date')
+        .select(
+          'subscription_tier, subscription_status, subscription_end_date, subscription_cancel_at_period_end'
+        )
         .eq('id', user.id)
         .single();
 
@@ -58,10 +61,17 @@ export default function BillingManagement() {
   }, [sub?.subscription_tier]);
 
   const isActive = useMemo(() => {
-    // your pricing page sets active for paid tiers, inactive for free
     if (currentPlanId === 'free') return false;
     return sub?.subscription_status === 'active';
   }, [currentPlanId, sub?.subscription_status]);
+
+  const cancelScheduled = useMemo(() => {
+    return (
+      currentPlanId !== 'free' &&
+      !!sub?.subscription_cancel_at_period_end &&
+      !!sub?.subscription_end_date
+    );
+  }, [currentPlanId, sub?.subscription_cancel_at_period_end, sub?.subscription_end_date]);
 
   const getTierIcon = (tier: PlanId) => {
     switch (tier) {
@@ -91,33 +101,32 @@ export default function BillingManagement() {
     window.location.href = '/pricing';
   };
 
-  // Optional: “Cancel” here only makes sense if you have Stripe.
-  // For now we just downgrade to free (same behavior as your pricing page).
   const handleCancelSubscription = async () => {
     if (!user?.id) return;
 
     setCanceling(true);
     try {
       toast({
-        title: 'Switching to Free plan...',
-        description: 'Updating your plan now.',
+        title: 'Canceling subscription...',
+        description: 'You will keep access until the current period ends.',
       });
 
-      const { error } = await supabase
-        .from('profiles')
-        .update({
-          subscription_tier: 'free',
-          subscription_status: 'inactive',
-          subscription_end_date: null,
-          updated_at: new Date().toISOString(),
-        })
-        .eq('id', user.id);
+      const { data, error } = await supabase.functions.invoke('cancel-subscription');
 
       if (error) {
-        console.error('Cancel/downgrade error:', error);
+        console.error('cancel-subscription error:', error);
         toast({
           title: 'Error',
-          description: 'Failed to update your plan. Please try again.',
+          description: error.message || 'Failed to cancel subscription. Please try again.',
+          variant: 'destructive',
+        });
+        return;
+      }
+
+      if (!data?.ok) {
+        toast({
+          title: 'Error',
+          description: data?.error || 'Failed to cancel subscription. Please try again.',
           variant: 'destructive',
         });
         return;
@@ -126,8 +135,10 @@ export default function BillingManagement() {
       await fetchProfileSubscription();
 
       toast({
-        title: 'Done',
-        description: 'You are now on the Free plan.',
+        title: 'Cancellation scheduled',
+        description: data?.subscription_end_date
+          ? `You will keep access until ${format(new Date(data.subscription_end_date), 'MMM dd, yyyy')}.`
+          : 'You will keep access until the current period ends.',
       });
     } finally {
       setCanceling(false);
@@ -163,6 +174,12 @@ export default function BillingManagement() {
                         Active
                       </Badge>
                     )}
+
+                    {cancelScheduled && (
+                      <Badge variant="outline" className="text-amber-600">
+                        Ending
+                      </Badge>
+                    )}
                   </div>
                 </div>
               </div>
@@ -172,7 +189,7 @@ export default function BillingManagement() {
               </Button>
             </div>
 
-            {/* End date (if you ever set it) */}
+            {/* End date */}
             {sub?.subscription_end_date && (
               <div className="flex items-center gap-2 text-sm text-gray-600">
                 <Calendar className="w-4 h-4" />
@@ -183,15 +200,15 @@ export default function BillingManagement() {
             )}
           </div>
 
-          {/* If you have an end date, show warning */}
-          {sub?.subscription_end_date && (
+          {/* Only show this warning if cancellation is scheduled */}
+          {cancelScheduled && sub?.subscription_end_date && (
             <Alert>
               <AlertCircle className="h-4 w-4" />
               <AlertTitle>Subscription Ending</AlertTitle>
               <AlertDescription>
                 Your subscription will end on{' '}
-                {format(new Date(sub.subscription_end_date), 'MMM dd, yyyy')}. You&apos;ll lose access
-                to premium features after this date.
+                {format(new Date(sub.subscription_end_date), 'MMM dd, yyyy')}. You&apos;ll keep
+                premium access until this date.
               </AlertDescription>
             </Alert>
           )}
@@ -206,9 +223,14 @@ export default function BillingManagement() {
               <Button
                 variant="destructive"
                 onClick={handleCancelSubscription}
-                disabled={canceling}
+                disabled={canceling || cancelScheduled}
+                title={cancelScheduled ? 'Cancellation already scheduled' : undefined}
               >
-                {canceling ? 'Updating...' : 'Cancel Subscription'}
+                {cancelScheduled
+                  ? 'Cancellation Scheduled'
+                  : canceling
+                  ? 'Updating...'
+                  : 'Cancel Subscription'}
               </Button>
             </div>
           ) : (
