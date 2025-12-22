@@ -56,7 +56,7 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
           <SlidersHorizontal className="h-5 w-5" />
         </Button>
       </SheetTrigger>
-      <SheetContent>
+      <SheetContent className='p-4'>
         <SheetHeader>
           <SheetTitle>Filters</SheetTitle>
         </SheetHeader>

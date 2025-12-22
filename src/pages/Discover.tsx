@@ -11,6 +11,7 @@ import { FilterPanel } from '@/components/discover/FilterPanel';
 import { ProfileCard } from '@/components/ProfileCard';
 import { SwipeActions } from '@/components/SwipeActions';
 import { toast } from 'sonner';
+import PublicProfileModal from '@/components/profile/PublicProfileModal';
 
 type SwipeDirection = 'left' | 'right' | 'up';
 
@@ -62,6 +63,20 @@ export default function Discover() {
     maxAge: 35,
     locationRadius: 50,
   });
+
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [selectedProfile, setSelectedProfile] = useState<DiscoverProfileRow | null>(null);
+
+  const openProfile = (p: DiscoverProfileRow) => {
+    setSelectedProfile(p);
+    setProfileModalOpen(true);
+  };
+
+  const closeProfile = () => {
+    setProfileModalOpen(false);
+    setSelectedProfile(null);
+  };
+
 
   useEffect(() => {
     if (!user || !profile) {
@@ -469,21 +484,21 @@ export default function Discover() {
 
   const cardProfile = currentProfile
     ? {
-        firstName: currentProfile.first_name || '—',
-        age: currentProfile.age ?? 0,
-        city: currentProfile.city || '',
-        state: currentProfile.state || '',
-        practiceLevel: currentProfile.practice_level || 'practicing',
-        denomination: currentProfile.denomination || undefined,
-        bio: currentProfile.bio || '',
-        nikahTimeline: currentProfile.nikah_timeline || '6-12mo',
-        photos:
-          currentProfile.profile_photo_url && currentProfile.profile_photo_url !== ''
-            ? [currentProfile.profile_photo_url]
-            : ['https://placehold.co/600x800?text=No+Photo'],
-        verified: !!currentProfile.verified_badge,
-        waliRequired: !!currentProfile.wali_required,
-      }
+      firstName: currentProfile.first_name || '—',
+      age: currentProfile.age ?? 0,
+      city: currentProfile.city || '',
+      state: currentProfile.state || '',
+      practiceLevel: currentProfile.practice_level || 'practicing',
+      denomination: currentProfile.denomination || undefined,
+      bio: currentProfile.bio || '',
+      nikahTimeline: currentProfile.nikah_timeline || '6-12mo',
+      photos:
+        currentProfile.profile_photo_url && currentProfile.profile_photo_url !== ''
+          ? [currentProfile.profile_photo_url]
+          : ['https://placehold.co/600x800?text=No+Photo'],
+      verified: !!currentProfile.verified_badge,
+      waliRequired: !!currentProfile.wali_required,
+    }
     : null;
 
   return (
@@ -508,7 +523,18 @@ export default function Discover() {
 
         {cardProfile ? (
           <div className="flex flex-col items-center">
-            <ProfileCard profile={cardProfile} />
+            <div
+              className="cursor-pointer w-full flex justify-center"
+              onClick={() => currentProfile && openProfile(currentProfile)}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && currentProfile) openProfile(currentProfile);
+              }}
+            >
+              <ProfileCard profile={cardProfile} />
+            </div>
+
 
             <SwipeActions
               onPass={() => handleSwipe('left')}
@@ -519,6 +545,38 @@ export default function Discover() {
             <p className="text-sm text-gray-500 mt-2">
               Profile {currentIndex + 1} of {profiles.length}
             </p>
+            <PublicProfileModal
+              open={profileModalOpen}
+              onClose={closeProfile}
+              profile={selectedProfile}
+              onSendIntro={
+                selectedProfile
+                  ? async () => {
+                    await handleIntroRequest(selectedProfile);
+                    closeProfile();
+                  }
+                  : undefined
+              }
+              onLike={
+                selectedProfile
+                  ? async () => {
+                    // same as pressing like (right swipe)
+                    await handleSwipe("right");
+                    closeProfile();
+                  }
+                  : undefined
+              }
+              onPass={
+                selectedProfile
+                  ? async () => {
+                    // same as pressing pass (left swipe)
+                    await handleSwipe("left");
+                    closeProfile();
+                  }
+                  : undefined
+              }
+            />
+
           </div>
         ) : (
           <div className="text-center py-20">

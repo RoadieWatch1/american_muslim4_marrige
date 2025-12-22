@@ -1,5 +1,8 @@
 import React from 'react';
 import { Button } from './ui/Button';
+import { useAuth } from '@/contexts/AuthContext';
+import { useAuthModal } from '@/contexts/AuthModalContext';
+import { useNavigate } from 'react-router-dom';
 
 const plans = [
   {
@@ -49,24 +52,39 @@ const plans = [
 ];
 
 export const Pricing: React.FC = () => {
-  const handleSelectPlan = (planName: string) => {
-    alert(`Selected ${planName} plan! Would redirect to payment.`);
+  const { user } = useAuth();
+  const { openAuthModal } = useAuthModal();
+  const navigate = useNavigate();
+
+  const handleSelectPlan = () => {
+    if (user) {
+      // Logged in → go to real pricing / upgrade flow
+      navigate('/pricing');
+    } else {
+      // Not logged in → open login/signup modal
+      openAuthModal();
+    }
   };
 
   return (
     <section className="py-20 bg-white">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900">Choose Your Plan</h2>
-          <p className="mt-4 text-xl text-gray-600">Start free, upgrade when ready</p>
+          <h2 className="text-4xl font-bold text-gray-900">
+            Choose Your Plan
+          </h2>
+          <p className="mt-4 text-xl text-gray-600">
+            Start free, upgrade when ready
+          </p>
         </div>
+
         <div className="grid md:grid-cols-3 gap-8">
           {plans.map((plan, index) => (
-            <div 
+            <div
               key={index}
               className={`relative rounded-2xl p-8 ${
-                plan.popular 
-                  ? 'bg-gradient-to-br from-teal-600 to-teal-700 text-white shadow-2xl scale-105' 
+                plan.popular
+                  ? 'bg-gradient-to-br from-teal-600 to-teal-700 text-white shadow-2xl scale-105'
                   : 'bg-white border-2 border-gray-200'
               }`}
             >
@@ -75,29 +93,57 @@ export const Pricing: React.FC = () => {
                   Most Popular
                 </div>
               )}
-              <h3 className={`text-2xl font-bold ${plan.popular ? 'text-white' : 'text-gray-900'}`}>
+
+              <h3
+                className={`text-2xl font-bold ${
+                  plan.popular ? 'text-white' : 'text-gray-900'
+                }`}
+              >
                 {plan.name}
               </h3>
+
               <div className="mt-4">
-                <span className={`text-5xl font-bold ${plan.popular ? 'text-white' : 'text-gray-900'}`}>
+                <span
+                  className={`text-5xl font-bold ${
+                    plan.popular ? 'text-white' : 'text-gray-900'
+                  }`}
+                >
                   {plan.price}
                 </span>
-                <span className={`text-lg ${plan.popular ? 'text-teal-100' : 'text-gray-500'}`}>
+                <span
+                  className={`text-lg ${
+                    plan.popular ? 'text-teal-100' : 'text-gray-500'
+                  }`}
+                >
                   /{plan.period}
                 </span>
               </div>
+
               <ul className="mt-8 space-y-4">
                 {plan.features.map((feature, i) => (
                   <li key={i} className="flex items-start gap-3">
-                    <span className={plan.popular ? 'text-amber-300' : 'text-teal-600'}>✓</span>
-                    <span className={plan.popular ? 'text-teal-50' : 'text-gray-600'}>{feature}</span>
+                    <span
+                      className={
+                        plan.popular ? 'text-amber-300' : 'text-teal-600'
+                      }
+                    >
+                      ✓
+                    </span>
+                    <span
+                      className={
+                        plan.popular ? 'text-teal-50' : 'text-gray-600'
+                      }
+                    >
+                      {feature}
+                    </span>
                   </li>
                 ))}
               </ul>
-              <Button 
+
+              <Button
                 variant={plan.popular ? 'secondary' : 'default'}
                 className="w-full mt-8"
-                onClick={() => handleSelectPlan(plan.name)}
+                onClick={handleSelectPlan}
               >
                 {plan.cta}
               </Button>

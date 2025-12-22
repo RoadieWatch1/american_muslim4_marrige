@@ -5,6 +5,10 @@ export const Footer: React.FC = () => {
     alert(`Navigating to ${section}`);
   };
 
+  const scrollToSection = (id: string) => {
+    document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });    
+  };
+
   return (
     <footer className="bg-gray-900 text-gray-300 py-12">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -19,16 +23,16 @@ export const Footer: React.FC = () => {
             <h4 className="text-white font-semibold mb-4">Company</h4>
             <ul className="space-y-2 text-sm">
               <li><button onClick={() => handleLinkClick('About')} className="hover:text-teal-400">About Us</button></li>
-              <li><button onClick={() => handleLinkClick('How It Works')} className="hover:text-teal-400">How It Works</button></li>
-              <li><button onClick={() => handleLinkClick('Success Stories')} className="hover:text-teal-400">Success Stories</button></li>
+              <li><button onClick={() => scrollToSection("how-it-works")} className="hover:text-teal-400">How It Works</button></li>
+              <li><button onClick={() => scrollToSection("success_stories")} className="hover:text-teal-400">Success Stories</button></li>
               <li><button onClick={() => handleLinkClick('Blog')} className="hover:text-teal-400">Blog</button></li>
             </ul>
           </div>
           <div>
             <h4 className="text-white font-semibold mb-4">Support</h4>
             <ul className="space-y-2 text-sm">
-              <li><button onClick={() => handleLinkClick('FAQ')} className="hover:text-teal-400">FAQ</button></li>
-              <li><button onClick={() => handleLinkClick('Safety')} className="hover:text-teal-400">Safety Guidelines</button></li>
+              <li><button onClick={() => scrollToSection("faq")} className="hover:text-teal-400">FAQ</button></li>
+              <li><button onClick={() => scrollToSection("trust_safety")} className="hover:text-teal-400">Safety Guidelines</button></li>
               <li><button onClick={() => handleLinkClick('Contact')} className="hover:text-teal-400">Contact Us</button></li>
               <li><button onClick={() => handleLinkClick('Help Center')} className="hover:text-teal-400">Help Center</button></li>
             </ul>
@@ -38,8 +42,8 @@ export const Footer: React.FC = () => {
             <ul className="space-y-2 text-sm">
               <li><button onClick={() => handleLinkClick('Terms')} className="hover:text-teal-400">Terms of Service</button></li>
               <li><button onClick={() => handleLinkClick('Privacy')} className="hover:text-teal-400">Privacy Policy</button></li>
-              <li><button onClick={() => handleLinkClick('Community')} className="hover:text-teal-400">Community Guidelines</button></li>
-              <li><button onClick={() => handleLinkClick('Islamic')} className="hover:text-teal-400">Islamic Guidelines</button></li>
+              <li><button onClick={() => scrollToSection("how-it-works")} className="hover:text-teal-400">Community Guidelines</button></li>
+              <li><button onClick={() => scrollToSection("islamic_guidelines")} className="hover:text-teal-400">Islamic Guidelines</button></li>
             </ul>
           </div>
         </div>
