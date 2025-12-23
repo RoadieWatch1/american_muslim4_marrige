@@ -152,7 +152,7 @@ export const DiscoverSection: React.FC = () => {
       'Seeking a practicing Muslim who values family and faith. ' +
       'Love reading, volunteering, and spending time with family.',
     nikahTimeline: '6-12mo',
-    photos: ['https://placehold.co/600x800?text=Demo+Profile'],
+    photos: ['https://d64gsuwffb70l.cloudfront.net/68efeec24861a2554564bed1_1760554748703_7b9c3fd6.webp'],
     verified: true,
     waliRequired: true,
   };
