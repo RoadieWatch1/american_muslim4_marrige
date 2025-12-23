@@ -253,23 +253,25 @@ export const DiscoverSection: React.FC = () => {
         profile={
           selectedProfile
             ? {
-                id: selectedProfile.id,
-                first_name: selectedProfile.firstName,
-                last_name: null,
-                age: selectedProfile.age,
-                city: selectedProfile.city,
-                state: selectedProfile.state,
-                country: null,
-                practice_level: selectedProfile.practiceLevel,
-                denomination: selectedProfile.denomination ?? null,
-                bio: selectedProfile.bio,
-                nikah_timeline: selectedProfile.nikahTimeline,
-                verified_badge: selectedProfile.verified,
-                wali_required: selectedProfile.waliRequired,
-              }
+              id: selectedProfile.id,
+              first_name: selectedProfile.firstName,
+              last_name: null,
+              age: selectedProfile.age,
+              city: selectedProfile.city,
+              state: selectedProfile.state,
+              country: null,
+              practice_level: selectedProfile.practiceLevel,
+              denomination: selectedProfile.denomination ?? null,
+              bio: selectedProfile.bio,
+              nikah_timeline: selectedProfile.nikahTimeline,
+              verified_badge: selectedProfile.verified,
+              wali_required: selectedProfile.waliRequired,              
+              profile_photo_url: selectedProfile.photos?.[0] ?? null,
+            }
             : null
         }
       />
+
     </section>
   );
 };

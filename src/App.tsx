@@ -30,6 +30,7 @@ import WaliInvite from "./pages/WaliInvite";
 import SubscriptionUpgradePage from "./pages/SubscriptionUpgradePage";
 import BillingSuccessPage from "./pages/BillingSuccessPage";
 import { AuthModalProvider } from "./contexts/AuthModalContext";
+import BillingCancelPage from "./pages/BillingCancelPage";
 
 const queryClient = new QueryClient();
 
@@ -71,6 +72,7 @@ const App = () => (
                     <Route path="/wali-console" element={<WaliConsole />} />
                     <Route path="/pricing" element={<SubscriptionUpgradePage />} />
                     <Route path="/billing/success" element={<BillingSuccessPage />} />
+                    <Route path="/billing/cancel" element={<BillingCancelPage />} />
                     <Route
                       path="/wali-guardian"
                       element={<WaliGuardianConsole />}
