@@ -1,51 +1,63 @@
-import React from 'react';
-import { Navigation } from './Navigation';
-import { Hero } from './Hero';
-import { Stats } from './Stats';
-import { Features } from './Features';
-import { HowItWorks } from './HowItWorks';
-import { IslamicGuidelines } from './IslamicGuidelines';
-import { DiscoverSection } from './DiscoverSection';
-import { Community } from './Community';
-import { TrustSafety } from './TrustSafety';
-import { Testimonials } from './Testimonials';
-import { Pricing } from './Pricing';
-import { FAQ } from './FAQ';
-import { CTA } from './CTA';
-import { Footer } from './Footer';
+import React from "react";
+import { Navigation } from "./Navigation";
+import { Hero } from "./Hero";
+import { Stats } from "./Stats";
+import { Features } from "./Features";
+import { HowItWorks } from "./HowItWorks";
+import { IslamicGuidelines } from "./IslamicGuidelines";
+import { DiscoverSection } from "./DiscoverSection";
+import { Community } from "./Community";
+import { TrustSafety } from "./TrustSafety";
+import { Testimonials } from "./Testimonials";
+import { Pricing } from "./Pricing";
+import { FAQ } from "./FAQ";
+import { CTA } from "./CTA";
+import { Footer } from "./Footer";
+import { AboutSection } from "./AboutSection";
 
 const AppLayout: React.FC = () => {
   return (
-    // FIX: The 'bg-white' class has been removed. This div will now inherit the 'bg-background' color from App.tsx.
     <div className="min-h-screen">
       <Navigation />
       <main className="pt-16">
         <Hero />
         <Stats />
-        <div id="how-it-works">
+                
+        <div id="features">
           <Features />
         </div>
+
         <div id="how-it-works">
           <HowItWorks />
         </div>
 
         <div id="islamic_guidelines">
-        <IslamicGuidelines />
+          <IslamicGuidelines />
         </div>
+
         <DiscoverSection />
         <Community />
+
         <div id="trust_safety">
-        <TrustSafety />
+          <TrustSafety />
         </div>
+
         <div id="success_stories">
           <Testimonials />
+        </div>        
+        
+        <div id="about">
+          <AboutSection />
         </div>
+
         <div id="pricing">
           <Pricing />
         </div>
+
         <div id="faq">
           <FAQ />
         </div>
+
         <CTA />
       </main>
       <Footer />
@@ -54,3 +66,63 @@ const AppLayout: React.FC = () => {
 };
 
 export default AppLayout;
+
+
+
+
+// import React from 'react';
+// import { Navigation } from './Navigation';
+// import { Hero } from './Hero';
+// import { Stats } from './Stats';
+// import { Features } from './Features';
+// import { HowItWorks } from './HowItWorks';
+// import { IslamicGuidelines } from './IslamicGuidelines';
+// import { DiscoverSection } from './DiscoverSection';
+// import { Community } from './Community';
+// import { TrustSafety } from './TrustSafety';
+// import { Testimonials } from './Testimonials';
+// import { Pricing } from './Pricing';
+// import { FAQ } from './FAQ';
+// import { CTA } from './CTA';
+// import { Footer } from './Footer';
+
+// const AppLayout: React.FC = () => {
+//   return (
+//     // FIX: The 'bg-white' class has been removed. This div will now inherit the 'bg-background' color from App.tsx.
+//     <div className="min-h-screen">
+//       <Navigation />
+//       <main className="pt-16">
+//         <Hero />
+//         <Stats />
+//         <div id="how-it-works">
+//           <Features />
+//         </div>
+//         <div id="how-it-works">
+//           <HowItWorks />
+//         </div>
+
+//         <div id="islamic_guidelines">
+//         <IslamicGuidelines />
+//         </div>
+//         <DiscoverSection />
+//         <Community />
+//         <div id="trust_safety">
+//         <TrustSafety />
+//         </div>
+//         <div id="success_stories">
+//           <Testimonials />
+//         </div>
+//         <div id="pricing">
+//           <Pricing />
+//         </div>
+//         <div id="faq">
+//           <FAQ />
+//         </div>
+//         <CTA />
+//       </main>
+//       <Footer />
+//     </div>
+//   );
+// };
+
+// export default AppLayout;

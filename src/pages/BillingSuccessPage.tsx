@@ -18,7 +18,7 @@ export default function BillingSuccessPage() {
 
     // optional auto-redirect after 2 seconds
     setTimeout(() => {
-      navigate("/settings");
+      navigate("/billing");
     }, 2000);
   }, []);
 

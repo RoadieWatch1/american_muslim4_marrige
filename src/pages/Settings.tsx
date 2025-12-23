@@ -234,7 +234,7 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="notifications" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="w-4 h-4" />
               Notifications
@@ -242,10 +242,10 @@ export default function Settings() {
             <TabsTrigger value="security" className="flex items-center gap-2">
               Security
             </TabsTrigger>
-            <TabsTrigger value="billing" className="flex items-center gap-2">
+            {/* <TabsTrigger value="billing" className="flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
               Billing
-            </TabsTrigger>
+            </TabsTrigger> */}
           </TabsList>
 
           <TabsContent value="notifications" className="space-y-6">
@@ -469,9 +469,9 @@ export default function Settings() {
             <TwoFactorSetup />
           </TabsContent>
 
-          <TabsContent value="billing" className="space-y-6">
+          {/* <TabsContent value="billing" className="space-y-6">
             <BillingManagement />
-          </TabsContent>
+          </TabsContent> */}
         </Tabs>
       </div>
     </div>

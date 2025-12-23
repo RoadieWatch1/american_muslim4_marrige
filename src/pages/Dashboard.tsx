@@ -1,7 +1,7 @@
-import React, { useState, useEffect } from 'react';
-import { useAuth } from '@/contexts/AuthContext';
-import { Button } from '@/components/ui/Button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import React, { useState, useEffect, useMemo } from "react";
+import { useAuth } from "@/contexts/AuthContext";
+import { Button } from "@/components/ui/Button";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Heart,
   MessageCircle,
@@ -10,46 +10,58 @@ import {
   User,
   Crown,
   Zap,
-  Star,
+  CheckCircle,
   BarChart3,
   UserCheck,
-} from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
-import { EmailVerificationBanner } from '@/components/auth/EmailVerificationBanner';
-import { supabase } from '@/lib/supabase';
+  CreditCard,
+} from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { EmailVerificationBanner } from "@/components/auth/EmailVerificationBanner";
+import { supabase } from "@/lib/supabase";
+
+type PlanId = "free" | "silver" | "gold";
 
 export default function Dashboard() {
   const { user, profile, isAdmin } = useAuth();
   const navigate = useNavigate();
   const [todaysMatches, setTodaysMatches] = useState(0);
 
-  const subscriptionTier = profile?.subscription_tier || 'basic';
-  const isElite = subscriptionTier === 'elite';
-  const isPremium = subscriptionTier === 'premium';
-  const isBasic = subscriptionTier === 'basic';
+  // ✅ normalize tier from profile (fallback to free)
+  const subscriptionTier: PlanId = useMemo(() => {
+    const t = (profile?.subscription_tier ?? "free").toString().toLowerCase();
+    if (t === "gold" || t === "silver" || t === "free") return t;
+    return "free";
+  }, [profile?.subscription_tier]);
+
+  const isGold = subscriptionTier === "gold";
+  const isSilver = subscriptionTier === "silver";
+  const isFree = subscriptionTier === "free";
 
   useEffect(() => {
-    if (user && isBasic) {
+    // your RPC seems used only for free daily limit
+    if (user && isFree) {
       loadTodaysMatches();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user]);
+  }, [user?.id, isFree]);
 
   const loadTodaysMatches = async () => {
     if (!user) return;
     try {
-      const { data } = await supabase.rpc('get_todays_match_count', {
+      const { data } = await supabase.rpc("get_todays_match_count", {
         user_uuid: user.id,
       });
       if (data !== null) setTodaysMatches(data);
     } catch (err) {
-      console.error('Error loading match count:', err);
+      console.error("Error loading match count:", err);
     }
   };
 
+  // NOTE: Your boost feature currently exists for "elite".
+  // We map it to GOLD (highest tier).
   const handleBoostProfile = async () => {
-    if (!isElite) {
-      navigate('/pricing');
+    if (!isGold) {
+      navigate("/pricing");
       return;
     }
     try {
@@ -57,38 +69,43 @@ export default function Dashboard() {
       boostUntil.setHours(boostUntil.getHours() + 24);
 
       await supabase
-        .from('profiles')
+        .from("profiles")
         .update({
           profile_boosted_until: boostUntil.toISOString(),
-          last_boost_date: new Date().toISOString().split('T')[0],
+          last_boost_date: new Date().toISOString().split("T")[0],
         })
-        .eq('id', user!.id);
+        .eq("id", user!.id);
 
-      alert('Your profile has been boosted for 24 hours!');
+      alert("Your profile has been boosted for 24 hours!");
     } catch (error) {
-      console.error('Error boosting profile:', error);
+      console.error("Error boosting profile:", error);
     }
   };
 
   const getTierBadge = () => {
-    if (isElite)
+    if (isGold)
       return {
         icon: Crown,
-        color: 'text-purple-600',
-        bg: 'bg-gradient-to-r from-purple-500 to-pink-500',
-        label: 'Elite',
+        bg: "bg-gradient-to-r from-yellow-500 to-amber-500",
+        label: "Gold",
       };
-    if (isPremium)
+    if (isSilver)
       return {
-        icon: Star,
-        color: 'text-blue-600',
-        bg: 'bg-gradient-to-r from-blue-500 to-cyan-500',
-        label: 'Premium',
+        icon: CheckCircle,
+        bg: "bg-gradient-to-r from-slate-500 to-gray-500",
+        label: "Silver",
       };
+    // free => no badge (or you can show a Free badge if you want)
     return null;
   };
 
   const tierBadge = getTierBadge();
+
+  const membershipHeaderBg = useMemo(() => {
+    if (isGold) return "bg-gradient-to-r from-yellow-500 to-amber-500";
+    if (isSilver) return "bg-gradient-to-r from-slate-500 to-gray-500";
+    return "bg-gray-50";
+  }, [isGold, isSilver]);
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50">
@@ -98,7 +115,7 @@ export default function Dashboard() {
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">
             <h2 className="text-3xl font-bold text-gray-900">
-              As-salamu alaykum, {profile?.first_name || 'User'}!
+              As-salamu alaykum, {profile?.first_name || "User"}!
             </h2>
 
             {tierBadge && (
@@ -116,12 +133,12 @@ export default function Dashboard() {
 
         {/* Subscription Status Card */}
         <Card className="mb-8 overflow-hidden">
-          <div className={isBasic ? 'bg-gray-50' : tierBadge?.bg}>
-            <CardHeader className={isBasic ? '' : 'text-white'}>
+          <div className={membershipHeaderBg}>
+            <CardHeader className={isFree ? "" : "text-white"}>
               <CardTitle className="flex items-center justify-between">
                 <span>Your Membership</span>
-                {isBasic && (
-                  <Button size="sm" onClick={() => navigate('/pricing')}>
+                {isFree && (
+                  <Button size="sm" onClick={() => navigate("/pricing")}>
                     Upgrade
                   </Button>
                 )}
@@ -135,7 +152,7 @@ export default function Dashboard() {
                 <Heart className="h-8 w-8 mx-auto mb-2 text-pink-500" />
                 <p className="font-semibold">Daily Matches</p>
                 <p className="text-2xl font-bold">
-                  {isBasic ? `${3 - todaysMatches}/3` : 'Unlimited'}
+                  {isFree ? `${Math.max(0, 3 - todaysMatches)}/3` : "Unlimited"}
                 </p>
               </div>
 
@@ -143,7 +160,7 @@ export default function Dashboard() {
                 <Zap className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
                 <p className="font-semibold">Visibility</p>
                 <p className="text-lg font-bold">
-                  {isElite ? 'Boosted' : isPremium ? 'Priority' : 'Standard'}
+                  {isGold ? "Boosted" : isSilver ? "Priority" : "Standard"}
                 </p>
               </div>
 
@@ -151,23 +168,24 @@ export default function Dashboard() {
                 <Shield className="h-8 w-8 mx-auto mb-2 text-green-500" />
                 <p className="font-semibold">Support</p>
                 <p className="text-lg font-bold">
-                  {isElite ? 'VIP 24/7' : isPremium ? 'Priority' : 'Standard'}
+                  {isGold ? "VIP 24/7" : isSilver ? "Priority" : "Standard"}
                 </p>
               </div>
             </div>
 
-            {isElite && (
-              <div className="mt-4 p-4 bg-purple-50 rounded-lg">
+            {/* Boost for GOLD */}
+            {isGold && (
+              <div className="mt-4 p-4 bg-amber-50 rounded-lg">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-semibold text-purple-900">Profile Boost</p>
-                    <p className="text-sm text-purple-700">
-                      Get 10x more visibility for 24 hours
+                    <p className="font-semibold text-amber-900">Profile Boost</p>
+                    <p className="text-sm text-amber-700">
+                      Get more visibility for 24 hours
                     </p>
                   </div>
                   <Button
                     onClick={handleBoostProfile}
-                    className="bg-purple-600 hover:bg-purple-700"
+                    className="bg-amber-600 hover:bg-amber-700"
                   >
                     <Zap className="h-4 w-4 mr-2" />
                     Boost Now
@@ -182,24 +200,22 @@ export default function Dashboard() {
         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
           <Card
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/discover')}
+            onClick={() => navigate("/discover")}
           >
             <CardHeader>
               <Heart className="w-8 h-8 text-pink-600 mb-2" />
               <CardTitle>Discover</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600 mb-4">
-                Browse profiles and find your match
-              </p>
-              {isBasic && todaysMatches >= 3 && (
+              <p className="text-gray-600 mb-4">Browse profiles and find your match</p>
+              {isFree && todaysMatches >= 3 && (
                 <p className="text-sm text-orange-600 mb-2">Daily limit reached</p>
               )}
               <Button
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/discover');
+                  navigate("/discover");
                 }}
               >
                 Start Swiping
@@ -209,7 +225,7 @@ export default function Dashboard() {
 
           <Card
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/messages')}
+            onClick={() => navigate("/messages")}
           >
             <CardHeader>
               <MessageCircle className="w-8 h-8 text-teal-600 mb-2" />
@@ -222,7 +238,7 @@ export default function Dashboard() {
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/messages');
+                  navigate("/messages");
                 }}
               >
                 View Chats
@@ -232,7 +248,7 @@ export default function Dashboard() {
 
           <Card
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/intro-requests')}
+            onClick={() => navigate("/intro-requests")}
           >
             <CardHeader>
               <UserCheck className="w-8 h-8 text-emerald-600 mb-2" />
@@ -247,7 +263,7 @@ export default function Dashboard() {
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/intro-requests');
+                  navigate("/intro-requests");
                 }}
               >
                 View Requests
@@ -257,7 +273,7 @@ export default function Dashboard() {
 
           <Card
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/profile')}
+            onClick={() => navigate("/profile")}
           >
             <CardHeader>
               <User className="w-8 h-8 text-blue-600 mb-2" />
@@ -270,7 +286,7 @@ export default function Dashboard() {
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/profile');
+                  navigate("/profile");
                 }}
               >
                 Edit Profile
@@ -278,25 +294,48 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
+          <Card
+            className="hover:shadow-lg transition-shadow cursor-pointer"
+            onClick={() => navigate("/billing")}
+          >
+            <CardHeader>
+              <CreditCard className="w-8 h-8 text-gray-700 mb-2" />
+              <CardTitle>Billing</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-gray-600 mb-4">
+                Manage your plan and subscription
+              </p>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  navigate("/billing");
+                }}
+              >
+                Open Billing
+              </Button>
+            </CardContent>
+          </Card>
+
           {isAdmin && (
             <Card
               className="hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200"
-              onClick={() => navigate('/admin')}
+              onClick={() => navigate("/admin")}
             >
               <CardHeader>
                 <Shield className="w-8 h-8 text-purple-600 mb-2" />
                 <CardTitle className="text-purple-900">Admin Dashboard</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="text-purple-700 mb-4">
-                  Monitor email digests and analytics
-                </p>
+                <p className="text-purple-700 mb-4">Monitor email digests and analytics</p>
                 <Button
                   variant="outline"
                   className="w-full border-purple-300 text-purple-700 hover:bg-purple-100"
                   onClick={(e) => {
                     e.stopPropagation();
-                    navigate('/admin');
+                    navigate("/admin");
                   }}
                 >
                   Open Admin
@@ -307,7 +346,7 @@ export default function Dashboard() {
 
           <Card
             className="hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-indigo-50 to-purple-50"
-            onClick={() => navigate('/analytics')}
+            onClick={() => navigate("/analytics")}
           >
             <CardHeader>
               <BarChart3 className="w-8 h-8 text-indigo-600 mb-2" />
@@ -320,7 +359,7 @@ export default function Dashboard() {
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/analytics');
+                  navigate("/analytics");
                 }}
               >
                 View Analytics
@@ -328,22 +367,23 @@ export default function Dashboard() {
             </CardContent>
           </Card>
 
+          {/* Settings no longer advertises billing */}
           <Card
             className="hover:shadow-lg transition-shadow cursor-pointer"
-            onClick={() => navigate('/settings')}
+            onClick={() => navigate("/settings")}
           >
             <CardHeader>
               <Settings className="w-8 h-8 text-gray-600 mb-2" />
               <CardTitle>Settings</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-gray-600 mb-4">Manage billing & preferences</p>
+              <p className="text-gray-600 mb-4">Manage account & preferences</p>
               <Button
                 variant="outline"
                 className="w-full"
                 onClick={(e) => {
                   e.stopPropagation();
-                  navigate('/settings');
+                  navigate("/settings");
                 }}
               >
                 Manage Settings
@@ -355,3 +395,364 @@ export default function Dashboard() {
     </div>
   );
 }
+
+
+
+
+// import React, { useState, useEffect } from 'react';
+// import { useAuth } from '@/contexts/AuthContext';
+// import { Button } from '@/components/ui/Button';
+// import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+// import {
+//   Heart,
+//   MessageCircle,
+//   Settings,
+//   Shield,
+//   User,
+//   Crown,
+//   Zap,
+//   Star,
+//   BarChart3,
+//   UserCheck,
+// } from 'lucide-react';
+// import { useNavigate } from 'react-router-dom';
+// import { EmailVerificationBanner } from '@/components/auth/EmailVerificationBanner';
+// import { supabase } from '@/lib/supabase';
+
+// export default function Dashboard() {
+//   const { user, profile, isAdmin } = useAuth();
+//   const navigate = useNavigate();
+//   const [todaysMatches, setTodaysMatches] = useState(0);
+
+//   const subscriptionTier = profile?.subscription_tier || 'basic';
+//   const isElite = subscriptionTier === 'elite';
+//   const isPremium = subscriptionTier === 'premium';
+//   const isBasic = subscriptionTier === 'basic';
+
+//   useEffect(() => {
+//     if (user && isBasic) {
+//       loadTodaysMatches();
+//     }
+//     // eslint-disable-next-line react-hooks/exhaustive-deps
+//   }, [user]);
+
+//   const loadTodaysMatches = async () => {
+//     if (!user) return;
+//     try {
+//       const { data } = await supabase.rpc('get_todays_match_count', {
+//         user_uuid: user.id,
+//       });
+//       if (data !== null) setTodaysMatches(data);
+//     } catch (err) {
+//       console.error('Error loading match count:', err);
+//     }
+//   };
+
+//   const handleBoostProfile = async () => {
+//     if (!isElite) {
+//       navigate('/pricing');
+//       return;
+//     }
+//     try {
+//       const boostUntil = new Date();
+//       boostUntil.setHours(boostUntil.getHours() + 24);
+
+//       await supabase
+//         .from('profiles')
+//         .update({
+//           profile_boosted_until: boostUntil.toISOString(),
+//           last_boost_date: new Date().toISOString().split('T')[0],
+//         })
+//         .eq('id', user!.id);
+
+//       alert('Your profile has been boosted for 24 hours!');
+//     } catch (error) {
+//       console.error('Error boosting profile:', error);
+//     }
+//   };
+
+//   const getTierBadge = () => {
+//     if (isElite)
+//       return {
+//         icon: Crown,
+//         color: 'text-purple-600',
+//         bg: 'bg-gradient-to-r from-purple-500 to-pink-500',
+//         label: 'Elite',
+//       };
+//     if (isPremium)
+//       return {
+//         icon: Star,
+//         color: 'text-blue-600',
+//         bg: 'bg-gradient-to-r from-blue-500 to-cyan-500',
+//         label: 'Premium',
+//       };
+//     return null;
+//   };
+
+//   const tierBadge = getTierBadge();
+
+//   return (
+//     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50">
+//       <div className="max-w-7xl mx-auto px-4 py-8">
+//         <EmailVerificationBanner />
+
+//         <div className="mb-8">
+//           <div className="flex items-center gap-3 mb-2">
+//             <h2 className="text-3xl font-bold text-gray-900">
+//               As-salamu alaykum, {profile?.first_name || 'User'}!
+//             </h2>
+
+//             {tierBadge && (
+//               <div
+//                 className={`${tierBadge.bg} text-white px-3 py-1 rounded-full text-sm font-semibold flex items-center gap-1`}
+//               >
+//                 <tierBadge.icon className="h-4 w-4" />
+//                 {tierBadge.label}
+//               </div>
+//             )}
+//           </div>
+
+//           <p className="text-gray-600">Welcome to your matchmaking dashboard</p>
+//         </div>
+
+//         {/* Subscription Status Card */}
+//         <Card className="mb-8 overflow-hidden">
+//           <div className={isBasic ? 'bg-gray-50' : tierBadge?.bg}>
+//             <CardHeader className={isBasic ? '' : 'text-white'}>
+//               <CardTitle className="flex items-center justify-between">
+//                 <span>Your Membership</span>
+//                 {isBasic && (
+//                   <Button size="sm" onClick={() => navigate('/pricing')}>
+//                     Upgrade
+//                   </Button>
+//                 )}
+//               </CardTitle>
+//             </CardHeader>
+//           </div>
+
+//           <CardContent className="pt-6">
+//             <div className="grid md:grid-cols-3 gap-4">
+//               <div className="text-center p-4 border rounded-lg">
+//                 <Heart className="h-8 w-8 mx-auto mb-2 text-pink-500" />
+//                 <p className="font-semibold">Daily Matches</p>
+//                 <p className="text-2xl font-bold">
+//                   {isBasic ? `${3 - todaysMatches}/3` : 'Unlimited'}
+//                 </p>
+//               </div>
+
+//               <div className="text-center p-4 border rounded-lg">
+//                 <Zap className="h-8 w-8 mx-auto mb-2 text-yellow-500" />
+//                 <p className="font-semibold">Visibility</p>
+//                 <p className="text-lg font-bold">
+//                   {isElite ? 'Boosted' : isPremium ? 'Priority' : 'Standard'}
+//                 </p>
+//               </div>
+
+//               <div className="text-center p-4 border rounded-lg">
+//                 <Shield className="h-8 w-8 mx-auto mb-2 text-green-500" />
+//                 <p className="font-semibold">Support</p>
+//                 <p className="text-lg font-bold">
+//                   {isElite ? 'VIP 24/7' : isPremium ? 'Priority' : 'Standard'}
+//                 </p>
+//               </div>
+//             </div>
+
+//             {isElite && (
+//               <div className="mt-4 p-4 bg-purple-50 rounded-lg">
+//                 <div className="flex items-center justify-between">
+//                   <div>
+//                     <p className="font-semibold text-purple-900">Profile Boost</p>
+//                     <p className="text-sm text-purple-700">
+//                       Get 10x more visibility for 24 hours
+//                     </p>
+//                   </div>
+//                   <Button
+//                     onClick={handleBoostProfile}
+//                     className="bg-purple-600 hover:bg-purple-700"
+//                   >
+//                     <Zap className="h-4 w-4 mr-2" />
+//                     Boost Now
+//                   </Button>
+//                 </div>
+//               </div>
+//             )}
+//           </CardContent>
+//         </Card>
+
+//         {/* Main Cards */}
+//         <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6 mb-8">
+//           <Card
+//             className="hover:shadow-lg transition-shadow cursor-pointer"
+//             onClick={() => navigate('/discover')}
+//           >
+//             <CardHeader>
+//               <Heart className="w-8 h-8 text-pink-600 mb-2" />
+//               <CardTitle>Discover</CardTitle>
+//             </CardHeader>
+//             <CardContent>
+//               <p className="text-gray-600 mb-4">
+//                 Browse profiles and find your match
+//               </p>
+//               {isBasic && todaysMatches >= 3 && (
+//                 <p className="text-sm text-orange-600 mb-2">Daily limit reached</p>
+//               )}
+//               <Button
+//                 className="w-full"
+//                 onClick={(e) => {
+//                   e.stopPropagation();
+//                   navigate('/discover');
+//                 }}
+//               >
+//                 Start Swiping
+//               </Button>
+//             </CardContent>
+//           </Card>
+
+//           <Card
+//             className="hover:shadow-lg transition-shadow cursor-pointer"
+//             onClick={() => navigate('/messages')}
+//           >
+//             <CardHeader>
+//               <MessageCircle className="w-8 h-8 text-teal-600 mb-2" />
+//               <CardTitle>Messages</CardTitle>
+//             </CardHeader>
+//             <CardContent>
+//               <p className="text-gray-600 mb-4">Chat with your matches</p>
+//               <Button
+//                 variant="outline"
+//                 className="w-full"
+//                 onClick={(e) => {
+//                   e.stopPropagation();
+//                   navigate('/messages');
+//                 }}
+//               >
+//                 View Chats
+//               </Button>
+//             </CardContent>
+//           </Card>
+
+//           <Card
+//             className="hover:shadow-lg transition-shadow cursor-pointer"
+//             onClick={() => navigate('/intro-requests')}
+//           >
+//             <CardHeader>
+//               <UserCheck className="w-8 h-8 text-emerald-600 mb-2" />
+//               <CardTitle>Intro Requests</CardTitle>
+//             </CardHeader>
+//             <CardContent>
+//               <p className="text-gray-600 mb-4">
+//                 See introductions you’ve sent and received.
+//               </p>
+//               <Button
+//                 variant="outline"
+//                 className="w-full"
+//                 onClick={(e) => {
+//                   e.stopPropagation();
+//                   navigate('/intro-requests');
+//                 }}
+//               >
+//                 View Requests
+//               </Button>
+//             </CardContent>
+//           </Card>
+
+//           <Card
+//             className="hover:shadow-lg transition-shadow cursor-pointer"
+//             onClick={() => navigate('/profile')}
+//           >
+//             <CardHeader>
+//               <User className="w-8 h-8 text-blue-600 mb-2" />
+//               <CardTitle>My Profile</CardTitle>
+//             </CardHeader>
+//             <CardContent>
+//               <p className="text-gray-600 mb-4">Edit your profile and photos</p>
+//               <Button
+//                 variant="outline"
+//                 className="w-full"
+//                 onClick={(e) => {
+//                   e.stopPropagation();
+//                   navigate('/profile');
+//                 }}
+//               >
+//                 Edit Profile
+//               </Button>
+//             </CardContent>
+//           </Card>
+
+//           {isAdmin && (
+//             <Card
+//               className="hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-purple-50 to-indigo-50 border-purple-200"
+//               onClick={() => navigate('/admin')}
+//             >
+//               <CardHeader>
+//                 <Shield className="w-8 h-8 text-purple-600 mb-2" />
+//                 <CardTitle className="text-purple-900">Admin Dashboard</CardTitle>
+//               </CardHeader>
+//               <CardContent>
+//                 <p className="text-purple-700 mb-4">
+//                   Monitor email digests and analytics
+//                 </p>
+//                 <Button
+//                   variant="outline"
+//                   className="w-full border-purple-300 text-purple-700 hover:bg-purple-100"
+//                   onClick={(e) => {
+//                     e.stopPropagation();
+//                     navigate('/admin');
+//                   }}
+//                 >
+//                   Open Admin
+//                 </Button>
+//               </CardContent>
+//             </Card>
+//           )}
+
+//           <Card
+//             className="hover:shadow-lg transition-shadow cursor-pointer bg-gradient-to-br from-indigo-50 to-purple-50"
+//             onClick={() => navigate('/analytics')}
+//           >
+//             <CardHeader>
+//               <BarChart3 className="w-8 h-8 text-indigo-600 mb-2" />
+//               <CardTitle>Analytics</CardTitle>
+//             </CardHeader>
+//             <CardContent>
+//               <p className="text-gray-600 mb-4">Track your match statistics</p>
+//               <Button
+//                 variant="outline"
+//                 className="w-full"
+//                 onClick={(e) => {
+//                   e.stopPropagation();
+//                   navigate('/analytics');
+//                 }}
+//               >
+//                 View Analytics
+//               </Button>
+//             </CardContent>
+//           </Card>
+
+//           <Card
+//             className="hover:shadow-lg transition-shadow cursor-pointer"
+//             onClick={() => navigate('/settings')}
+//           >
+//             <CardHeader>
+//               <Settings className="w-8 h-8 text-gray-600 mb-2" />
+//               <CardTitle>Settings</CardTitle>
+//             </CardHeader>
+//             <CardContent>
+//               <p className="text-gray-600 mb-4">Manage billing & preferences</p>
+//               <Button
+//                 variant="outline"
+//                 className="w-full"
+//                 onClick={(e) => {
+//                   e.stopPropagation();
+//                   navigate('/settings');
+//                 }}
+//               >
+//                 Manage Settings
+//               </Button>
+//             </CardContent>
+//           </Card>
+//         </div>
+//       </div>
+//     </div>
+//   );
+// }

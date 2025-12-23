@@ -100,3 +100,4 @@ export const Stats: React.FC = () => {
     </section>
   );
 };
+
