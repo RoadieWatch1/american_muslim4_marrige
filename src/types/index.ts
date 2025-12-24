@@ -61,14 +61,27 @@ export interface IntroRequest {
 export interface DiscoverFilters {
   minAge: number;
   maxAge: number;
-  locationRadius: number;
+
+  // we keep it for UI now, but we won't send to RPC yet
+  locationRadius?: number;
+
   denomination?: string;
   practiceLevel?: PracticeLevel[];
-  // Premium/Elite only filters
+
+  // Silver+
   verifiedOnly?: boolean;
+
+  // Gold+
   hasPhoto?: boolean;
   recentlyActive?: boolean;
+
+  // Gold+ (NEW Islamic filters backed by DB columns you added)
+  madhab?: string;
+  prayerFrequency?: string;      // maps to profiles.prayer_frequency
+  mosqueAttendance?: string;     // maps to profiles.mosque_attendance
+  halalStrict?: string;          // maps to profiles.halal_strict
 }
+
 
 
 export interface Message {

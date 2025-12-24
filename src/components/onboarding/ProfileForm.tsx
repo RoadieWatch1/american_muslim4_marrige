@@ -41,18 +41,16 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
     city: '',
     state: '',
     marital_status: '',
-    nikah_timeline: '', // ✅ NEW
+    nikah_timeline: '',
     has_children: false,
     education: '',
     occupation: '',
     bio: '',
   });
 
-  // Prefill from initialData when it changes
   useEffect(() => {
     if (!initialData) return;
 
-    // normalise DOB to yyyy-mm-dd if needed
     let dob = initialData.dob || '';
     if (dob && typeof dob === 'string' && dob.length > 10) {
       dob = dob.slice(0, 10);
@@ -66,9 +64,11 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
       city: initialData.city || '',
       state: initialData.state || '',
       marital_status: initialData.marital_status || '',
-      nikah_timeline: initialData.nikah_timeline || '', // ✅ NEW
+      nikah_timeline: initialData.nikah_timeline || '',
       has_children:
-        typeof initialData.has_children === 'boolean' ? initialData.has_children : false,
+        typeof initialData.has_children === 'boolean'
+          ? initialData.has_children
+          : false,
       education: initialData.education || '',
       occupation: initialData.occupation || '',
       bio: initialData.bio || '',
@@ -78,7 +78,6 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
 
-    // shadcn Select isn't native "required", so validate here
     if (!formData.nikah_timeline) {
       alert('Please select your Nikah timeline.');
       return;
@@ -131,7 +130,9 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
                 id="dob"
                 type="date"
                 value={formData.dob}
-                onChange={(e) => setFormData({ ...formData, dob: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, dob: e.target.value })
+                }
                 required
               />
             </div>
@@ -142,7 +143,9 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
                 <Input
                   id="city"
                   value={formData.city}
-                  onChange={(e) => setFormData({ ...formData, city: e.target.value })}
+                  onChange={(e) =>
+                    setFormData({ ...formData, city: e.target.value })
+                  }
                   required
                 />
               </div>
@@ -155,6 +158,32 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
                     setFormData({ ...formData, state: e.target.value })
                   }
                   required
+                />
+              </div>
+            </div>
+
+            {/* ✅ NEW: education + occupation */}
+            <div className="grid md:grid-cols-2 gap-4">
+              <div>
+                <Label htmlFor="education">Education</Label>
+                <Input
+                  id="education"
+                  value={formData.education}
+                  onChange={(e) =>
+                    setFormData({ ...formData, education: e.target.value })
+                  }
+                  placeholder="e.g., Bachelor's, Master's..."
+                />
+              </div>
+              <div>
+                <Label htmlFor="occupation">Occupation</Label>
+                <Input
+                  id="occupation"
+                  value={formData.occupation}
+                  onChange={(e) =>
+                    setFormData({ ...formData, occupation: e.target.value })
+                  }
+                  placeholder="e.g., Software Engineer..."
                 />
               </div>
             </div>
@@ -178,7 +207,6 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
               </Select>
             </div>
 
-            {/* ✅ Nikah timeline (values must match DB constraint) */}
             <div>
               <Label>Nikah Timeline *</Label>
               <Select
@@ -208,7 +236,9 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
               <Textarea
                 id="bio"
                 value={formData.bio}
-                onChange={(e) => setFormData({ ...formData, bio: e.target.value })}
+                onChange={(e) =>
+                  setFormData({ ...formData, bio: e.target.value })
+                }
                 rows={4}
                 required
               />
