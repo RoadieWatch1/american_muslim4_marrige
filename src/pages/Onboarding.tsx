@@ -176,7 +176,13 @@ function computeInitialStep(args: {
   if (photoCount >= 2 && s <= 3) s = 4;
   if (hasBasicProfile && photoCount >= 2 && s <= 4) s = 5;
   if (hasPersonalDetails && photoCount >= 2 && hasBasicProfile && s <= 5) s = 6;
-  if (hasIslamicPreferences && photoCount >= 2 && hasBasicProfile && hasPersonalDetails && s <= 6)
+  if (
+    hasIslamicPreferences &&
+    photoCount >= 2 &&
+    hasBasicProfile &&
+    hasPersonalDetails &&
+    s <= 6
+  )
     s = 7;
 
   return s;
@@ -190,7 +196,9 @@ export default function Onboarding() {
   const [loadingInitial, setLoadingInitial] = useState(true);
 
   // index 1–8 used; index 0 ignored
-  const [completedSteps, setCompletedSteps] = useState<boolean[]>(() => Array(9).fill(false));
+  const [completedSteps, setCompletedSteps] = useState<boolean[]>(() =>
+    Array(9).fill(false)
+  );
 
   const { user, refreshProfile } = useAuth();
   const navigate = useNavigate();
@@ -254,7 +262,6 @@ export default function Onboarding() {
           navigate('/dashboard', { replace: true });
           return;
         }
-
 
         // 3) photos count
         const { data: mediaData, error: mediaError } = await supabase
@@ -360,16 +367,26 @@ export default function Onboarding() {
     if (merged.first_name) payload.first_name = merged.first_name;
     if (merged.last_name) payload.last_name = merged.last_name;
     if (merged.dob) payload.dob = merged.dob;
+
     if (merged.city) payload.city = merged.city;
     if (merged.state) payload.state = merged.state;
+
+    // ✅ default country for US onboarding (optional but helpful)
     if (merged.country) payload.country = merged.country;
+    else if (merged.city || merged.state) payload.country = 'USA';
+
+    // ✅ FIX: store lat/lng
+    if (merged.latitude !== undefined) payload.latitude = merged.latitude;
+    if (merged.longitude !== undefined) payload.longitude = merged.longitude;
 
     if (merged.marital_status) payload.marital_status = merged.marital_status;
 
-    // ✅ NEW: save nikah_timeline on profiles table
+    // ✅ save nikah_timeline
     if (merged.nikah_timeline) payload.nikah_timeline = merged.nikah_timeline;
 
-    if (typeof merged.has_children === 'boolean') payload.has_children = merged.has_children;
+    if (typeof merged.has_children === 'boolean')
+      payload.has_children = merged.has_children;
+
     if (merged.education) payload.education = merged.education;
     if (merged.occupation) payload.occupation = merged.occupation;
 
@@ -501,17 +518,17 @@ export default function Onboarding() {
           setWaliInfo((prev) =>
             prev
               ? {
-                ...prev,
-                email: data.wali_email,
-                phone: data.wali_phone,
-                inviteToken: data.invite_token ?? null,
-              }
+                  ...prev,
+                  email: data.wali_email,
+                  phone: data.wali_phone,
+                  inviteToken: data.invite_token ?? null,
+                }
               : {
-                id: data.id,
-                email: data.wali_email,
-                phone: data.wali_phone,
-                inviteToken: data.invite_token ?? null,
-              }
+                  id: data.id,
+                  email: data.wali_email,
+                  phone: data.wali_phone,
+                  inviteToken: data.invite_token ?? null,
+                }
           );
         }
       } else {
@@ -696,7 +713,9 @@ export default function Onboarding() {
       <div className="max-w-4xl mx-auto">
         <div className="mb-8">
           <div className="bg-white rounded-lg shadow-sm p-6 mb-6">
-            <h1 className="text-3xl font-bold text-center mb-2">Complete Your Profile</h1>
+            <h1 className="text-3xl font-bold text-center mb-2">
+              Complete Your Profile
+            </h1>
             <p className="text-center text-gray-600 mb-6">
               Help us find your perfect match by completing these steps
             </p>
@@ -717,16 +736,18 @@ export default function Onboarding() {
                     onClick={() => {
                       if (isClickable) setStep(stepIndex);
                     }}
-                    className={`flex flex-col items-center focus:outline-none ${isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
-                      }`}
+                    className={`flex flex-col items-center focus:outline-none ${
+                      isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                    }`}
                   >
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center ${isCompleted
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
+                        isCompleted
                           ? 'bg-green-500 text-white'
                           : isCurrent
-                            ? 'bg-teal-600 text-white'
-                            : 'bg-gray-200 text-gray-500'
-                        }`}
+                          ? 'bg-teal-600 text-white'
+                          : 'bg-gray-200 text-gray-500'
+                      }`}
                     >
                       {isCompleted ? (
                         <CheckCircle className="w-5 h-5" />

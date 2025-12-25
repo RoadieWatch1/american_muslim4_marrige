@@ -132,15 +132,16 @@ export const Footer: React.FC = () => {
             © 2025 American Muslims 4 Marriage. All rights reserved.
           </p>
 
-          <div className="flex gap-6 mt-4 md:mt-0 text-sm">
-            {/* Facebook (link pending) */}
-            <span
-              className="text-gray-500 cursor-not-allowed"
-              title="Facebook link coming soon"
+          <div className="flex gap-6 mt-4 md:mt-0 text-sm">            
+            {/* Facebook */}
+            <a
+              href="https://www.facebook.com/share/16x2PzRm3h/"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-gray-400 hover:text-teal-400"
             >
               Facebook
-            </span>
-            {/* Instagram */}
+            </a>
             <a
               href="https://www.instagram.com/americanmuslim4marriage?igsh=MTUzZzJ2MmpvZWNycA=="
               target="_blank"

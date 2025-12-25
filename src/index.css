@@ -142,6 +142,11 @@
   @apply my-4 ml-6;
 }
 
+.pac-container {
+  z-index: 999999 !important;
+}
+
+
 /* =========================================
    FINAL FIX: Global Overrides for Hardcoded Colors
    This ensures any remaining bg-white or text-black classes use your theme's colors.
