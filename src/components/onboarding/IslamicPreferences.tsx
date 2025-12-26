@@ -35,9 +35,11 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
   initialData = {},
 }) => {
   const [formData, setFormData] = useState({
+    // ✅ NEW: Denomination (needed for Discover filter + DB)
+    denomination: initialData.denomination || '',
+
     // ✅ NEW (needed for Discover filter + DB)
     practice_level: initialData.practice_level || '',
-
     prayer_frequency: initialData.prayer_frequency || '',
     quran_reading: initialData.quran_reading || '',
     islamic_education: initialData.islamic_education || '',
@@ -60,6 +62,9 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
     const newErrors: Record<string, string> = {};
 
     // ✅ required
+    if (!formData.denomination)
+      newErrors.denomination = 'Please select your denomination';
+
     if (!formData.practice_level)
       newErrors.practice_level = 'Please select your practice level';
     if (!formData.prayer_frequency)
@@ -90,18 +95,37 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-6">
-            {/* ✅ NEW: Practice Level */}
+            {/* ✅ NEW: Denomination */}
+            <div>
+              <Label htmlFor="denomination">Denomination *</Label>
+              <Select
+                value={formData.denomination}
+                onValueChange={(v) => setFormData({ ...formData, denomination: v })}
+              >
+                <SelectTrigger className={errors.denomination ? 'border-red-500' : ''}>
+                  <SelectValue placeholder="Select denomination" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sunni">Sunni</SelectItem>
+                  <SelectItem value="shia">Shia</SelectItem>
+                  <SelectItem value="quranic">Quranic Muslim</SelectItem>
+                  <SelectItem value="prefer_not">Prefer not to say</SelectItem>
+                </SelectContent>
+              </Select>
+
+              {errors.denomination && (
+                <p className="text-red-500 text-sm mt-1">{errors.denomination}</p>
+              )}
+            </div>
+
+            {/* ✅ Practice Level */}
             <div>
               <Label htmlFor="practice_level">Practice Level *</Label>
               <Select
                 value={formData.practice_level}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, practice_level: v })
-                }
+                onValueChange={(v) => setFormData({ ...formData, practice_level: v })}
               >
-                <SelectTrigger
-                  className={errors.practice_level ? 'border-red-500' : ''}
-                >
+                <SelectTrigger className={errors.practice_level ? 'border-red-500' : ''}>
                   <SelectValue placeholder="Select your practice level" />
                 </SelectTrigger>
                 <SelectContent>
@@ -121,13 +145,9 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
               <Label htmlFor="prayer_frequency">Daily Prayer (Salah) *</Label>
               <Select
                 value={formData.prayer_frequency}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, prayer_frequency: v })
-                }
+                onValueChange={(v) => setFormData({ ...formData, prayer_frequency: v })}
               >
-                <SelectTrigger
-                  className={errors.prayer_frequency ? 'border-red-500' : ''}
-                >
+                <SelectTrigger className={errors.prayer_frequency ? 'border-red-500' : ''}>
                   <SelectValue placeholder="Select frequency" />
                 </SelectTrigger>
                 <SelectContent>
@@ -148,9 +168,7 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
               <Label htmlFor="quran_reading">Quran Reading</Label>
               <Select
                 value={formData.quran_reading}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, quran_reading: v })
-                }
+                onValueChange={(v) => setFormData({ ...formData, quran_reading: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select frequency" />
@@ -170,13 +188,9 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
               <Label htmlFor="mosque_attendance">Mosque Attendance *</Label>
               <Select
                 value={formData.mosque_attendance}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, mosque_attendance: v })
-                }
+                onValueChange={(v) => setFormData({ ...formData, mosque_attendance: v })}
               >
-                <SelectTrigger
-                  className={errors.mosque_attendance ? 'border-red-500' : ''}
-                >
+                <SelectTrigger className={errors.mosque_attendance ? 'border-red-500' : ''}>
                   <SelectValue placeholder="Select frequency" />
                 </SelectTrigger>
                 <SelectContent>
@@ -227,9 +241,7 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
               <Label htmlFor="islamic_education">Islamic Education</Label>
               <Select
                 value={formData.islamic_education}
-                onValueChange={(v) =>
-                  setFormData({ ...formData, islamic_education: v })
-                }
+                onValueChange={(v) => setFormData({ ...formData, islamic_education: v })}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Select your level" />
@@ -272,15 +284,10 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
                     id="fasting_regular"
                     checked={formData.fasting_regular}
                     onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        fasting_regular: checked as boolean,
-                      })
+                      setFormData({ ...formData, fasting_regular: checked as boolean })
                     }
                   />
-                  <Label htmlFor="fasting_regular">
-                    Regular fasting outside Ramadan
-                  </Label>
+                  <Label htmlFor="fasting_regular">Regular fasting outside Ramadan</Label>
                 </div>
 
                 <div className="flex items-center space-x-2">
@@ -288,10 +295,7 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
                     id="hajj_completed"
                     checked={formData.hajj_completed}
                     onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        hajj_completed: checked as boolean,
-                      })
+                      setFormData({ ...formData, hajj_completed: checked as boolean })
                     }
                   />
                   <Label htmlFor="hajj_completed">Completed Hajj</Label>
@@ -302,10 +306,7 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
                     id="zakat_regular"
                     checked={formData.zakat_regular}
                     onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        zakat_regular: checked as boolean,
-                      })
+                      setFormData({ ...formData, zakat_regular: checked as boolean })
                     }
                   />
                   <Label htmlFor="zakat_regular">Pay Zakat regularly</Label>
@@ -316,10 +317,7 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
                     id="islamic_finance"
                     checked={formData.islamic_finance}
                     onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        islamic_finance: checked as boolean,
-                      })
+                      setFormData({ ...formData, islamic_finance: checked as boolean })
                     }
                   />
                   <Label htmlFor="islamic_finance">Use Islamic banking/finance</Label>
@@ -330,10 +328,7 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
                     id="convert_revert"
                     checked={formData.convert_revert}
                     onCheckedChange={(checked) =>
-                      setFormData({
-                        ...formData,
-                        convert_revert: checked as boolean,
-                      })
+                      setFormData({ ...formData, convert_revert: checked as boolean })
                     }
                   />
                   <Label htmlFor="convert_revert">I am a convert/revert</Label>
@@ -358,15 +353,19 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 
 
 
-
 // import React, { useState } from 'react';
 // import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 // import { Button } from '@/components/ui/Button';
 // import { Label } from '@/components/ui/label';
-// import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+// import {
+//   Select,
+//   SelectContent,
+//   SelectItem,
+//   SelectTrigger,
+//   SelectValue,
+// } from '@/components/ui/select';
 // import { Checkbox } from '@/components/ui/checkbox';
 // import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
-// import { AlertCircle } from 'lucide-react';
 
 // interface IslamicPreferencesProps {
 //   onSubmit: (data: any) => void;
@@ -374,8 +373,25 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //   initialData?: any;
 // }
 
-// export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({ onSubmit, onBack, initialData = {} }) => {
+// /**
+//  * ✅ practice_level MUST match DB constraint:
+//  * CHECK (practice_level = ANY (ARRAY['learning','moderate','practicing','very_practicing']))
+//  */
+// const PRACTICE_LEVEL_OPTIONS = [
+//   { value: 'learning', label: 'Learning' },
+//   { value: 'moderate', label: 'Moderate' },
+//   { value: 'practicing', label: 'Practicing' },
+//   { value: 'very_practicing', label: 'Very Practicing' },
+// ];
+
+// export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
+//   onSubmit,
+//   onBack,
+//   initialData = {},
+// }) => {
 //   const [formData, setFormData] = useState({
+//     // ✅ NEW (needed for Discover filter + DB)
+//     practice_level: initialData.practice_level || '',
 //     prayer_frequency: initialData.prayer_frequency || '',
 //     quran_reading: initialData.quran_reading || '',
 //     islamic_education: initialData.islamic_education || '',
@@ -389,18 +405,24 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //     madhab: initialData.madhab || '',
 //     hijab_preference: initialData.hijab_preference || '',
 //     beard_preference: initialData.beard_preference || '',
-//     ...initialData
+//     ...initialData,
 //   });
 
 //   const [errors, setErrors] = useState<Record<string, string>>({});
 
 //   const validateForm = () => {
 //     const newErrors: Record<string, string> = {};
-    
-//     if (!formData.prayer_frequency) newErrors.prayer_frequency = 'Please select your prayer frequency';
-//     if (!formData.halal_strict) newErrors.halal_strict = 'Please select your halal dietary preference';
-//     if (!formData.mosque_attendance) newErrors.mosque_attendance = 'Please select mosque attendance frequency';
-    
+
+//     // ✅ required
+//     if (!formData.practice_level)
+//       newErrors.practice_level = 'Please select your practice level';
+//     if (!formData.prayer_frequency)
+//       newErrors.prayer_frequency = 'Please select your prayer frequency';
+//     if (!formData.halal_strict)
+//       newErrors.halal_strict = 'Please select your halal dietary preference';
+//     if (!formData.mosque_attendance)
+//       newErrors.mosque_attendance = 'Please select mosque attendance frequency';
+
 //     setErrors(newErrors);
 //     return Object.keys(newErrors).length === 0;
 //   };
@@ -419,12 +441,47 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //           <CardTitle className="text-2xl">Islamic Practices & Preferences</CardTitle>
 //           <p className="text-gray-600">Share your religious practices and preferences</p>
 //         </CardHeader>
+
 //         <CardContent>
 //           <form onSubmit={handleSubmit} className="space-y-6">
+//             {/* ✅ NEW: Practice Level */}
+//             <div>
+//               <Label htmlFor="practice_level">Practice Level *</Label>
+//               <Select
+//                 value={formData.practice_level}
+//                 onValueChange={(v) =>
+//                   setFormData({ ...formData, practice_level: v })
+//                 }
+//               >
+//                 <SelectTrigger
+//                   className={errors.practice_level ? 'border-red-500' : ''}
+//                 >
+//                   <SelectValue placeholder="Select your practice level" />
+//                 </SelectTrigger>
+//                 <SelectContent>
+//                   {PRACTICE_LEVEL_OPTIONS.map((opt) => (
+//                     <SelectItem key={opt.value} value={opt.value}>
+//                       {opt.label}
+//                     </SelectItem>
+//                   ))}
+//                 </SelectContent>
+//               </Select>
+//               {errors.practice_level && (
+//                 <p className="text-red-500 text-sm mt-1">{errors.practice_level}</p>
+//               )}
+//             </div>
+
 //             <div>
 //               <Label htmlFor="prayer_frequency">Daily Prayer (Salah) *</Label>
-//               <Select value={formData.prayer_frequency} onValueChange={(v) => setFormData({...formData, prayer_frequency: v})}>
-//                 <SelectTrigger className={errors.prayer_frequency ? 'border-red-500' : ''}>
+//               <Select
+//                 value={formData.prayer_frequency}
+//                 onValueChange={(v) =>
+//                   setFormData({ ...formData, prayer_frequency: v })
+//                 }
+//               >
+//                 <SelectTrigger
+//                   className={errors.prayer_frequency ? 'border-red-500' : ''}
+//                 >
 //                   <SelectValue placeholder="Select frequency" />
 //                 </SelectTrigger>
 //                 <SelectContent>
@@ -436,12 +493,19 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //                   <SelectItem value="learning">Learning to pray</SelectItem>
 //                 </SelectContent>
 //               </Select>
-//               {errors.prayer_frequency && <p className="text-red-500 text-sm mt-1">{errors.prayer_frequency}</p>}
+//               {errors.prayer_frequency && (
+//                 <p className="text-red-500 text-sm mt-1">{errors.prayer_frequency}</p>
+//               )}
 //             </div>
 
 //             <div>
 //               <Label htmlFor="quran_reading">Quran Reading</Label>
-//               <Select value={formData.quran_reading} onValueChange={(v) => setFormData({...formData, quran_reading: v})}>
+//               <Select
+//                 value={formData.quran_reading}
+//                 onValueChange={(v) =>
+//                   setFormData({ ...formData, quran_reading: v })
+//                 }
+//               >
 //                 <SelectTrigger>
 //                   <SelectValue placeholder="Select frequency" />
 //                 </SelectTrigger>
@@ -458,8 +522,15 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 
 //             <div>
 //               <Label htmlFor="mosque_attendance">Mosque Attendance *</Label>
-//               <Select value={formData.mosque_attendance} onValueChange={(v) => setFormData({...formData, mosque_attendance: v})}>
-//                 <SelectTrigger className={errors.mosque_attendance ? 'border-red-500' : ''}>
+//               <Select
+//                 value={formData.mosque_attendance}
+//                 onValueChange={(v) =>
+//                   setFormData({ ...formData, mosque_attendance: v })
+//                 }
+//               >
+//                 <SelectTrigger
+//                   className={errors.mosque_attendance ? 'border-red-500' : ''}
+//                 >
 //                   <SelectValue placeholder="Select frequency" />
 //                 </SelectTrigger>
 //                 <SelectContent>
@@ -471,14 +542,22 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //                   <SelectItem value="rarely">Rarely</SelectItem>
 //                 </SelectContent>
 //               </Select>
-//               {errors.mosque_attendance && <p className="text-red-500 text-sm mt-1">{errors.mosque_attendance}</p>}
+//               {errors.mosque_attendance && (
+//                 <p className="text-red-500 text-sm mt-1">{errors.mosque_attendance}</p>
+//               )}
 //             </div>
+
 //             <div>
 //               <Label htmlFor="halal_strict">Halal Dietary Practice *</Label>
-//               <RadioGroup value={formData.halal_strict} onValueChange={(v) => setFormData({...formData, halal_strict: v})}>
+//               <RadioGroup
+//                 value={formData.halal_strict}
+//                 onValueChange={(v) => setFormData({ ...formData, halal_strict: v })}
+//               >
 //                 <div className="flex items-center space-x-2">
 //                   <RadioGroupItem value="very_strict" id="very_strict" />
-//                   <Label htmlFor="very_strict">Very strict (halal only, no exceptions)</Label>
+//                   <Label htmlFor="very_strict">
+//                     Very strict (halal only, no exceptions)
+//                   </Label>
 //                 </div>
 //                 <div className="flex items-center space-x-2">
 //                   <RadioGroupItem value="strict" id="strict" />
@@ -493,11 +572,19 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //                   <Label htmlFor="flexible">Flexible</Label>
 //                 </div>
 //               </RadioGroup>
+//               {errors.halal_strict && (
+//                 <p className="text-red-500 text-sm mt-1">{errors.halal_strict}</p>
+//               )}
 //             </div>
 
 //             <div>
 //               <Label htmlFor="islamic_education">Islamic Education</Label>
-//               <Select value={formData.islamic_education} onValueChange={(v) => setFormData({...formData, islamic_education: v})}>
+//               <Select
+//                 value={formData.islamic_education}
+//                 onValueChange={(v) =>
+//                   setFormData({ ...formData, islamic_education: v })
+//                 }
+//               >
 //                 <SelectTrigger>
 //                   <SelectValue placeholder="Select your level" />
 //                 </SelectTrigger>
@@ -513,7 +600,10 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 
 //             <div>
 //               <Label htmlFor="madhab">School of Thought (Madhab)</Label>
-//               <Select value={formData.madhab} onValueChange={(v) => setFormData({...formData, madhab: v})}>
+//               <Select
+//                 value={formData.madhab}
+//                 onValueChange={(v) => setFormData({ ...formData, madhab: v })}
+//               >
 //                 <SelectTrigger>
 //                   <SelectValue placeholder="Select if applicable" />
 //                 </SelectTrigger>
@@ -532,42 +622,73 @@ export const IslamicPreferences: React.FC<IslamicPreferencesProps> = ({
 //               <Label>Additional Practices</Label>
 //               <div className="space-y-2">
 //                 <div className="flex items-center space-x-2">
-//                   <Checkbox 
-//                     id="fasting_regular" 
+//                   <Checkbox
+//                     id="fasting_regular"
 //                     checked={formData.fasting_regular}
-//                     onCheckedChange={(checked) => setFormData({...formData, fasting_regular: checked as boolean})}
+//                     onCheckedChange={(checked) =>
+//                       setFormData({
+//                         ...formData,
+//                         fasting_regular: checked as boolean,
+//                       })
+//                     }
 //                   />
-//                   <Label htmlFor="fasting_regular">Regular fasting outside Ramadan</Label>
+//                   <Label htmlFor="fasting_regular">
+//                     Regular fasting outside Ramadan
+//                   </Label>
 //                 </div>
+
 //                 <div className="flex items-center space-x-2">
-//                   <Checkbox 
-//                     id="hajj_completed" 
+//                   <Checkbox
+//                     id="hajj_completed"
 //                     checked={formData.hajj_completed}
-//                     onCheckedChange={(checked) => setFormData({...formData, hajj_completed: checked as boolean})}
+//                     onCheckedChange={(checked) =>
+//                       setFormData({
+//                         ...formData,
+//                         hajj_completed: checked as boolean,
+//                       })
+//                     }
 //                   />
 //                   <Label htmlFor="hajj_completed">Completed Hajj</Label>
 //                 </div>
+
 //                 <div className="flex items-center space-x-2">
-//                   <Checkbox 
-//                     id="zakat_regular" 
+//                   <Checkbox
+//                     id="zakat_regular"
 //                     checked={formData.zakat_regular}
-//                     onCheckedChange={(checked) => setFormData({...formData, zakat_regular: checked as boolean})}
+//                     onCheckedChange={(checked) =>
+//                       setFormData({
+//                         ...formData,
+//                         zakat_regular: checked as boolean,
+//                       })
+//                     }
 //                   />
 //                   <Label htmlFor="zakat_regular">Pay Zakat regularly</Label>
 //                 </div>
+
 //                 <div className="flex items-center space-x-2">
-//                   <Checkbox 
-//                     id="islamic_finance" 
+//                   <Checkbox
+//                     id="islamic_finance"
 //                     checked={formData.islamic_finance}
-//                     onCheckedChange={(checked) => setFormData({...formData, islamic_finance: checked as boolean})}
+//                     onCheckedChange={(checked) =>
+//                       setFormData({
+//                         ...formData,
+//                         islamic_finance: checked as boolean,
+//                       })
+//                     }
 //                   />
 //                   <Label htmlFor="islamic_finance">Use Islamic banking/finance</Label>
 //                 </div>
+
 //                 <div className="flex items-center space-x-2">
-//                   <Checkbox 
-//                     id="convert_revert" 
+//                   <Checkbox
+//                     id="convert_revert"
 //                     checked={formData.convert_revert}
-//                     onCheckedChange={(checked) => setFormData({...formData, convert_revert: checked as boolean})}
+//                     onCheckedChange={(checked) =>
+//                       setFormData({
+//                         ...formData,
+//                         convert_revert: checked as boolean,
+//                       })
+//                     }
 //                   />
 //                   <Label htmlFor="convert_revert">I am a convert/revert</Label>
 //                 </div>

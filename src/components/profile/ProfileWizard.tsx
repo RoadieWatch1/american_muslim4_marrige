@@ -61,73 +61,82 @@ export default function ProfileWizard() {
   }, [user]);
 
   // Build payload the same way as onboarding
-  const buildProfilePayload = (merged: any) => {
-    if (!user || !merged) return null;
+const buildProfilePayload = (merged: any) => {
+  if (!user || !merged) return null;
 
-    const payload: any = {};
+  const payload: any = {};
 
-    // ✅ Basic fields (FIX: include latitude/longitude)
-    [
-      'first_name',
-      'last_name',
-      'dob',
-      'city',
-      'state',
-      'country',
-      'latitude',   // ✅ ADDED
-      'longitude',  // ✅ ADDED
-      'marital_status',
-      'occupation',
-      'education',
-      'bio',
-      'ethnicity',
-      'practice_level',
-      'prayer_frequency',
-      'nikah_timeline',
-      'denomination',
-      'has_children',
-    ].forEach((key) => {
-      if (merged[key] !== undefined) payload[key] = merged[key];
-    });
+  // ✅ Basic fields (includes denomination + lat/lng)
+  [
+    'first_name',
+    'last_name',
+    'dob',
+    'city',
+    'state',
+    'country',
+    'latitude',
+    'longitude',
+    'marital_status',
+    'occupation',
+    'education',
+    'bio',
+    'ethnicity',
+    'practice_level',
+    'prayer_frequency',
+    'nikah_timeline',
+    'denomination', // ✅ already here
+    'has_children',
+  ].forEach((key) => {
+    if (merged[key] !== undefined) payload[key] = merged[key];
+  });
 
-    // Languages
-    if (merged.languages) {
-      payload.languages_spoken = merged.languages
-        .split(',')
-        .map((s: string) => s.trim())
-        .filter(Boolean);
+  // ✅ Languages (safe)
+  if (typeof merged.languages === 'string') {
+    const arr = merged.languages
+      .split(',')
+      .map((s: string) => s.trim())
+      .filter(Boolean);
+
+    payload.languages_spoken = arr.length ? arr : null;
+  }
+
+  // ✅ Lifestyle choices pack (ONLY include keys that exist)
+  const lifestyle: any = {};
+  [
+    'height',
+    'hobbies',
+    'personality_traits',
+    'life_goals',
+    'dealbreakers',
+    'looking_for',
+    'family_plans',
+    'relocation_willing',
+    'halal_strict',
+    'mosque_attendance',
+    'quran_reading',
+    'fasting_regular',
+    'hajj_completed',
+    'islamic_finance',
+    'zakat_regular',
+    'madhab',
+    'hijab_preference',
+    'beard_preference',
+    'convert_revert',
+    'islamic_education', // ✅ IMPORTANT: you collect this in the form
+  ].forEach((key) => {
+    if (merged[key] !== undefined && merged[key] !== null && merged[key] !== '') {
+      lifestyle[key] = merged[key];
     }
+  });
 
-    // Lifestyle choices pack
-    const lifestyle: any = {};
-    [
-      'height',
-      'hobbies',
-      'personality_traits',
-      'life_goals',
-      'dealbreakers',
-      'looking_for',
-      'family_plans',
-      'relocation_willing',
-      'halal_strict',
-      'mosque_attendance',
-      'quran_reading',
-      'fasting_regular',
-      'hajj_completed',
-      'islamic_finance',
-      'zakat_regular',
-      'madhab',
-      'hijab_preference',
-      'beard_preference',
-      'convert_revert',
-    ].forEach((key) => {
-      if (merged[key] !== undefined) lifestyle[key] = merged[key];
-    });
-
+  // ✅ Avoid overwriting lifestyle_choices with empty object
+  if (Object.keys(lifestyle).length > 0) {
     payload.lifestyle_choices = lifestyle;
+  }
 
-    return payload;
-  };
+  return payload;
+};
+
 
   const saveStep = async (partial: any) => {
     const merged = { ...profileData, ...partial };

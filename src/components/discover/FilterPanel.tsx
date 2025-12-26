@@ -179,6 +179,7 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
                 <SelectItem value="any">Any</SelectItem>
                 <SelectItem value="sunni">Sunni</SelectItem>
                 <SelectItem value="shia">Shia</SelectItem>
+                <SelectItem value="quranic">Quranic Muslim</SelectItem>
               </SelectContent>
             </Select>
           </div>

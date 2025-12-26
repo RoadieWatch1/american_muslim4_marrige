@@ -384,14 +384,20 @@ export default function Onboarding() {
     // ✅ save nikah_timeline
     if (merged.nikah_timeline) payload.nikah_timeline = merged.nikah_timeline;
 
-    if (typeof merged.has_children === 'boolean')
-      payload.has_children = merged.has_children;
+    if (typeof merged.has_children === 'boolean') payload.has_children = merged.has_children;
 
     if (merged.education) payload.education = merged.education;
     if (merged.occupation) payload.occupation = merged.occupation;
 
     if (merged.bio) payload.bio = merged.bio;
     if (merged.ethnicity) payload.ethnicity = merged.ethnicity;
+
+    // ✅ Denomination (Sunni/Shia/Quranic Muslim etc.)
+    if (merged.denomination) payload.denomination = merged.denomination;
+
+    // (optional but in your schema)
+    if (merged.practice_level) payload.practice_level = merged.practice_level;
+    if (merged.prayer_regular) payload.prayer_regular = merged.prayer_regular;
 
     if (merged.languages) {
       const arr = String(merged.languages)
@@ -440,6 +446,7 @@ export default function Onboarding() {
 
     return payload;
   };
+
 
   const saveStep = async (partial: any) => {
     if (!user) return;
@@ -518,17 +525,17 @@ export default function Onboarding() {
           setWaliInfo((prev) =>
             prev
               ? {
-                  ...prev,
-                  email: data.wali_email,
-                  phone: data.wali_phone,
-                  inviteToken: data.invite_token ?? null,
-                }
+                ...prev,
+                email: data.wali_email,
+                phone: data.wali_phone,
+                inviteToken: data.invite_token ?? null,
+              }
               : {
-                  id: data.id,
-                  email: data.wali_email,
-                  phone: data.wali_phone,
-                  inviteToken: data.invite_token ?? null,
-                }
+                id: data.id,
+                email: data.wali_email,
+                phone: data.wali_phone,
+                inviteToken: data.invite_token ?? null,
+              }
           );
         }
       } else {
@@ -736,18 +743,16 @@ export default function Onboarding() {
                     onClick={() => {
                       if (isClickable) setStep(stepIndex);
                     }}
-                    className={`flex flex-col items-center focus:outline-none ${
-                      isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
-                    }`}
+                    className={`flex flex-col items-center focus:outline-none ${isClickable ? 'cursor-pointer' : 'cursor-not-allowed opacity-60'
+                      }`}
                   >
                     <div
-                      className={`w-10 h-10 rounded-full flex items-center justify-center ${
-                        isCompleted
+                      className={`w-10 h-10 rounded-full flex items-center justify-center ${isCompleted
                           ? 'bg-green-500 text-white'
                           : isCurrent
-                          ? 'bg-teal-600 text-white'
-                          : 'bg-gray-200 text-gray-500'
-                      }`}
+                            ? 'bg-teal-600 text-white'
+                            : 'bg-gray-200 text-gray-500'
+                        }`}
                     >
                       {isCompleted ? (
                         <CheckCircle className="w-5 h-5" />
