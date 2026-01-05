@@ -11,20 +11,17 @@ export default function ContactPage() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState("");
-
-  // Optional: prefill email if you have it in user metadata (safe fallback)
-  useEffect(() => {
-    // if your auth context exposes email elsewhere, you can wire it in here
+  
+  useEffect(() => {    
+    if ((user as any)?.email) setEmail((user as any).email);    
   }, []);
 
-  // ✅ Put the address in one place so you can edit easily
-  // IMPORTANT: Replace with the client's real address / PO Box.
   const business = useMemo(
     () => ({
-      legalName: "American Muslims 4 Marriage LLC",
-      addressLine1: "PO Box XXXX", // <-- replace
-      cityStateZip: "Tennessee, USA", // <-- replace
-      supportEmail: "support@americanmuslim4marriage.com", // <-- replace if different
+      legalName: "American Muslim 4 Marriage LLC",
+      addressLine1: "3750 Lenora Church Rd",
+      cityStateZip: "Snellville, GA 30039, USA",
+      supportEmail: "support@americanmuslim4marriage.com",
     }),
     []
   );
@@ -46,20 +43,45 @@ export default function ContactPage() {
         user_agent: navigator.userAgent,
       };
 
-      const { error } = await supabase.from("contact_messages").insert(payload);
+      // Basic validation (UI already requires email/message, but keep this safe)
+      if (!payload.email || !payload.message) {
+        toast.error("Email and message are required.", { id: toastId });
+        return;
+      }
 
-      // keep the "2 seconds feel"
-      await new Promise((r) => setTimeout(r, 1200));
+      // 1) Save to DB first
+      const { error: dbError } = await supabase
+        .from("contact_messages")
+        .insert(payload);
 
-      if (error) throw error;
+      if (dbError) throw dbError;
+
+      // 2) Trigger email via Edge Function (Resend)
+      const { error: fnError } = await supabase.functions.invoke(
+        "send-contact-email",
+        {
+          body: payload,
+        }
+      );
+
+      if (fnError) throw fnError;
+
+      // keep the "feel"
+      await new Promise((r) => setTimeout(r, 800));
 
       toast.success("Thanks! We received your message.", { id: toastId });
+
       setName("");
       setEmail("");
       setMessage("");
     } catch (err: any) {
       console.error(err);
-      toast.error("Failed to send. Please try again.", { id: toastId });
+      toast.error(
+        err?.message
+          ? `Failed to send: ${err.message}`
+          : "Failed to send. Please try again.",
+        { id: toastId }
+      );
     } finally {
       setSending(false);
     }
@@ -75,7 +97,9 @@ export default function ContactPage() {
 
         {/* ✅ Compliance block (CCBill will look for this) */}
         <div className="mt-6 rounded-2xl border border-gray-200 bg-white p-6 shadow-sm">
-          <h2 className="text-lg font-semibold text-gray-900">Business Contact</h2>
+          <h2 className="text-lg font-semibold text-gray-900">
+            Business Contact
+          </h2>
 
           <div className="mt-3 space-y-1 text-sm text-gray-700">
             <p className="font-medium">{business.legalName}</p>
@@ -83,7 +107,10 @@ export default function ContactPage() {
             <p>{business.cityStateZip}</p>
             <p className="pt-2">
               Email:{" "}
-              <a className="text-teal-700 hover:underline" href={`mailto:${business.supportEmail}`}>
+              <a
+                className="text-teal-700 hover:underline"
+                href={`mailto:${business.supportEmail}`}
+              >
                 {business.supportEmail}
               </a>
             </p>
@@ -97,7 +124,9 @@ export default function ContactPage() {
         {/* Form */}
         <div className="mt-6 rounded-3xl border border-gray-200 bg-white shadow-sm overflow-hidden">
           <div className="bg-gradient-to-br from-teal-50 to-white px-6 sm:px-7 py-5 border-b border-gray-200">
-            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">Send a Message</h3>
+            <h3 className="text-xl sm:text-2xl font-bold text-gray-900">
+              Send a Message
+            </h3>
             <p className="mt-1 text-sm text-gray-600">
               Fill out the form below and we’ll get back to you.
             </p>
@@ -106,7 +135,9 @@ export default function ContactPage() {
           <div className="p-6 sm:p-7">
             <form onSubmit={submit} className="space-y-4">
               <div>
-                <label className="text-sm font-semibold text-gray-900">Name</label>
+                <label className="text-sm font-semibold text-gray-900">
+                  Name
+                </label>
                 <input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
@@ -116,7 +147,9 @@ export default function ContactPage() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-900">Email</label>
+                <label className="text-sm font-semibold text-gray-900">
+                  Email
+                </label>
                 <input
                   required
                   type="email"
@@ -128,7 +161,9 @@ export default function ContactPage() {
               </div>
 
               <div>
-                <label className="text-sm font-semibold text-gray-900">Message</label>
+                <label className="text-sm font-semibold text-gray-900">
+                  Message
+                </label>
                 <textarea
                   required
                   value={message}
