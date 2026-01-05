@@ -1,10 +1,7 @@
-import React, { useState } from "react";
-import { ContactModal } from "./ContactModal";
+import React from "react";
 import { Link } from "react-router-dom";
 
 export const Footer: React.FC = () => {
-  const [contactOpen, setContactOpen] = useState(false);
-
   const scrollToSection = (id: string) => {
     document.getElementById(id)?.scrollIntoView({ behavior: "smooth" });
   };
@@ -73,14 +70,14 @@ export const Footer: React.FC = () => {
                   Safety Guidelines
                 </button>
               </li>
+
+              {/* ✅ Contact is now a real page */}
               <li>
-                <button
-                  onClick={() => setContactOpen(true)}
-                  className="hover:text-teal-400"
-                >
+                <Link to="/contact" className="hover:text-teal-400">
                   Contact Us
-                </button>
+                </Link>
               </li>
+
               <li>
                 <button
                   onClick={() => scrollToSection("faq")}
@@ -106,14 +103,11 @@ export const Footer: React.FC = () => {
                   Privacy Policy
                 </Link>
               </li>
-
-              {/* ✅ Add this */}
               <li>
                 <Link to="/2257-exemption" className="hover:text-teal-400">
                   2257 Exemption
                 </Link>
               </li>
-
               <li>
                 <button
                   onClick={() => scrollToSection("how-it-works")}
@@ -132,7 +126,6 @@ export const Footer: React.FC = () => {
               </li>
             </ul>
           </div>
-
         </div>
 
         {/* Bottom */}
@@ -142,7 +135,6 @@ export const Footer: React.FC = () => {
           </p>
 
           <div className="flex gap-6 mt-4 md:mt-0 text-sm">
-            {/* Facebook */}
             <a
               href="https://www.facebook.com/share/16x2PzRm3h/"
               target="_blank"
@@ -159,8 +151,6 @@ export const Footer: React.FC = () => {
             >
               Instagram
             </a>
-
-            {/* YouTube */}
             <a
               href="https://www.youtube.com/@AmericanMuslim4Marriage"
               target="_blank"
@@ -169,7 +159,6 @@ export const Footer: React.FC = () => {
             >
               YouTube
             </a>
-            {/* TikTok (link pending) */}
             <span
               className="text-gray-500 cursor-not-allowed"
               title="TikTok link coming soon"
@@ -179,8 +168,6 @@ export const Footer: React.FC = () => {
           </div>
         </div>
       </div>
-
-      <ContactModal open={contactOpen} onClose={() => setContactOpen(false)} />
     </footer>
   );
 };
