@@ -35,6 +35,7 @@ import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { ScrollToTop } from "./components/ScrollToTop";
 import BillingPage from "./pages/BillingPage";
+import Exemption2257 from "./pages/Exemption2257";
 
 const queryClient = new QueryClient();
 
@@ -58,6 +59,7 @@ const App = () => (
                   <Route path="/auth/callback" element={<AuthCallback />} />
                   <Route path="/verify-email" element={<VerifyEmail />} />
                   <Route path="/reset-password" element={<ResetPassword />} />
+                  <Route path="/2257-exemption" element={<Exemption2257 />} />
 
                   {/* Wali invite is special: can be visited before login */}
                   <Route path="/wali-invite" element={<WaliInvite />} />
