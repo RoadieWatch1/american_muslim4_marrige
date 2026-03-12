@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
@@ -8,7 +8,6 @@ import { supabase } from '@/lib/supabase';
 import { CheckCircle, AlertCircle, Lock } from 'lucide-react';
 
 const ResetPassword: React.FC = () => {
-  const [searchParams] = useSearchParams();
   const navigate = useNavigate();
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
@@ -16,45 +15,34 @@ const ResetPassword: React.FC = () => {
   const [validating, setValidating] = useState(true);
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState('');
-  const [tokenValid, setTokenValid] = useState(false);
-  const [userId, setUserId] = useState<string | null>(null);
-
-  const token = searchParams.get('token');
+  const [sessionReady, setSessionReady] = useState(false);
 
   useEffect(() => {
-    validateToken();
-  }, [token]);
-
-  const validateToken = async () => {
-    if (!token) {
-      setError('Invalid or missing reset token');
-      setValidating(false);
-      return;
-    }
-
-    try {
-      const { data, error } = await supabase
-        .from('password_reset_tokens')
-        .select('*')
-        .eq('token', token)
-        .eq('used', false)
-        .gt('expires_at', new Date().toISOString())
-        .single();
-
-      if (error || !data) {
-        setError('This reset link is invalid or has expired');
-        setTokenValid(false);
-      } else {
-        setTokenValid(true);
-        setUserId(data.user_id);
+    // Supabase redirects here with hash tokens after the user clicks the
+    // reset link in their email.  The JS client picks them up automatically
+    // and fires a PASSWORD_RECOVERY auth-state-change event.
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      (event) => {
+        if (event === 'PASSWORD_RECOVERY') {
+          setSessionReady(true);
+          setValidating(false);
+        }
       }
-    } catch (err) {
-      setError('Failed to validate reset token');
-      setTokenValid(false);
-    } finally {
+    );
+
+    // If the session was already established before the listener attached
+    // (e.g. fast redirect), check the current session directly.
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        setSessionReady(true);
+      }
       setValidating(false);
-    }
-  };
+    });
+
+    return () => {
+      subscription.unsubscribe();
+    };
+  }, []);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -73,19 +61,11 @@ const ResetPassword: React.FC = () => {
     setLoading(true);
 
     try {
-      // Update user password
-      const { error: updateError } = await supabase.auth.admin.updateUserById(
-        userId!,
-        { password }
-      );
+      const { error: updateError } = await supabase.auth.updateUser({
+        password,
+      });
 
       if (updateError) throw updateError;
-
-      // Mark token as used
-      await supabase
-        .from('password_reset_tokens')
-        .update({ used: true })
-        .eq('token', token);
 
       setSuccess(true);
       setTimeout(() => {
@@ -110,7 +90,7 @@ const ResetPassword: React.FC = () => {
     );
   }
 
-  if (!tokenValid) {
+  if (!sessionReady) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-teal-50 to-emerald-50 flex items-center justify-center p-4">
         <Card className="w-full max-w-md">
@@ -121,7 +101,9 @@ const ResetPassword: React.FC = () => {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-4">
-            <p className="text-gray-600">{error}</p>
+            <p className="text-gray-600">
+              This reset link is invalid or has expired. Please request a new one.
+            </p>
             <Button onClick={() => navigate('/')} className="w-full">
               Return to Home
             </Button>

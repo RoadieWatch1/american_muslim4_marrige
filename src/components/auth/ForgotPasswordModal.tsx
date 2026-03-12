@@ -23,18 +23,18 @@ export const ForgotPasswordModal: React.FC<ForgotPasswordModalProps> = ({ isOpen
     setError('');
 
     try {
-      const { error: functionError } = await supabase.functions.invoke('send-password-reset', {
-        body: { email }
+      const { error: resetError } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`,
       });
 
-      if (functionError) throw functionError;
+      if (resetError) throw resetError;
 
       setSuccess(true);
       setTimeout(() => {
         handleClose();
       }, 5000);
     } catch (err: any) {
-      if (err.message?.includes('429')) {
+      if (err.message?.includes('rate') || err.message?.includes('429')) {
         setError('Too many requests. Please try again later.');
       } else {
         setError('Failed to send reset email. Please try again.');
