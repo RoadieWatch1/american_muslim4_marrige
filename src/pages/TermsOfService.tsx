@@ -14,7 +14,7 @@ export default function TermsOfService() {
           <h1 className="mt-3 text-3xl sm:text-4xl font-bold text-gray-900">
             Terms of Service
           </h1>
-          <p className="mt-2 text-sm text-gray-500">Last updated: Jan 2025</p>
+          <p className="mt-2 text-sm text-gray-500">Last updated: March 2026</p>
         </div>
 
         <div className="prose prose-gray max-w-none">
@@ -53,6 +53,12 @@ export default function TermsOfService() {
           <p>
             You retain ownership of your content. By posting content, you grant us a limited license
             to host, display, and process it for operating the service.
+          </p>
+          <p>
+            By uploading any photo, video, or other media content to the platform, you grant American
+            Muslim 4 Marriage a non-exclusive, royalty-free, worldwide license to download, stream,
+            store, display, publish, and distribute such content solely for the purpose of operating
+            and providing the platform's services.
           </p>
 
           <h2>6. Disclaimers</h2>
