@@ -1,10 +1,11 @@
 import React, { useMemo, useState } from 'react';
-import { startCheckout } from "@/lib/startCheckout";
 import { useNavigate } from 'react-router-dom';
 import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
+import CCBillCheckout from '@/components/CCBillCheckout';
+import { CCBILL_WIDGET } from '@/lib/ccbill';
 
 type PlanId = 'free' | 'silver' | 'gold';
 
@@ -130,53 +131,56 @@ export default function SubscriptionUpgradePage() {
   //   }
   // };
 
+  const [showCheckout, setShowCheckout] = useState<"silver" | "gold" | null>(null);
+
   const handleChangePlan = async (planId: PlanId) => {
-  if (!user) {
-    navigate("/login");
-    return;
-  }
-
-  if (planId === currentPlanId) {
-    toast.info(`You are already on the ${currentPlan?.name ?? "current"} plan.`);
-    return;
-  }
-
-  try {
-    setLoadingPlanId(planId);
-
-    // ✅ Paid plans must go through Stripe Checkout
-    if (planId === "silver" || planId === "gold") {
-      await startCheckout(planId); // redirects
+    if (!user) {
+      navigate("/login");
       return;
     }
 
-    // ✅ Free plan: downgrade locally (optional)
-    const { error } = await supabase
-      .from("profiles")
-      .update({
-        subscription_tier: "free",
-        subscription_status: "inactive",
-        stripe_subscription_id: null,
-        subscription_end_date: null,
-        updated_at: new Date().toISOString(),
-      })
-      .eq("id", user.id);
-
-    if (error) {
-      console.error("Error updating subscription:", error);
-      toast.error("Could not update your plan. Please try again.");
+    if (planId === currentPlanId) {
+      toast.info(`You are already on the ${currentPlan?.name ?? "current"} plan.`);
       return;
     }
 
-    await refreshProfile?.();
-    toast.success("You are now on the Free plan.");
-  } catch (err: any) {
-    console.error(err);
-    toast.error(err?.message || "Something went wrong. Please try again.");
-  } finally {
-    setLoadingPlanId(null);
-  }
-};
+    try {
+      setLoadingPlanId(planId);
+
+      // Paid plans: show the CCBill widget checkout
+      if (planId === "silver" || planId === "gold") {
+        setShowCheckout(planId);
+        setLoadingPlanId(null);
+        return;
+      }
+
+      // Free plan: downgrade locally
+      const { error } = await supabase
+        .from("profiles")
+        .update({
+          subscription_tier: "free",
+          subscription_status: "inactive",
+          stripe_subscription_id: null,
+          subscription_end_date: null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.id);
+
+      if (error) {
+        console.error("Error updating subscription:", error);
+        toast.error("Could not update your plan. Please try again.");
+        return;
+      }
+
+      await refreshProfile?.();
+      toast.success("You are now on the Free plan.");
+    } catch (err: any) {
+      console.error(err);
+      toast.error(err?.message || "Something went wrong. Please try again.");
+    } finally {
+      setLoadingPlanId(null);
+    }
+  };
 
 
   if (!user || !profile) {
@@ -315,6 +319,33 @@ export default function SubscriptionUpgradePage() {
             );
           })}
         </div>
+
+        {/* CCBill checkout widget — appears when user clicks a paid plan */}
+        {showCheckout && (
+          <div className="mt-12 max-w-lg mx-auto">
+            <div className="bg-white border-2 border-teal-200 rounded-2xl p-8 shadow-lg">
+              <div className="flex items-center justify-between mb-4">
+                <h2 className="text-xl font-bold text-gray-900">
+                  {showCheckout === "silver" ? "Silver" : "Gold"} Plan Checkout
+                </h2>
+                <button
+                  onClick={() => setShowCheckout(null)}
+                  className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
+                >
+                  &times;
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-6">
+                Complete your payment below to activate your{" "}
+                {showCheckout === "silver" ? "Silver ($19/mo)" : "Gold ($39/mo)"} plan.
+              </p>
+              <CCBillCheckout
+                widgetClass={CCBILL_WIDGET[showCheckout].className}
+                scriptSrc={CCBILL_WIDGET.scriptSrc}
+              />
+            </div>
+          </div>
+        )}
       </div>
     </section>
   );
