@@ -61,12 +61,8 @@ export const PLAN_PRICING: Record<PaidTier, PlanPricing> = {
 
 /**
  * Builds the CCBill FlexForms dynamic pricing checkout URL.
- *
- * This URL can be:
- *  - opened as a redirect (window.location.href = url)
- *  - embedded in an iframe for inline checkout
- *
- * Docs: CCBill FlexForms → Dynamic Pricing
+ * Open this as a top-level navigation (window.open or window.location.href).
+ * CCBill blocks iframe embedding (X-Frame-Options).
  */
 export function buildCheckoutUrl(tier: PaidTier): string {
   const plan = PLAN_PRICING[tier];
@@ -83,7 +79,13 @@ export function buildCheckoutUrl(tier: PaidTier): string {
     formDigest: plan.formDigest,
   });
 
-  return `https://api.ccbill.com/wap-frontflex/flexforms/${CCBILL_CONFIG.flexId}?${params.toString()}`;
+  const url = `https://api.ccbill.com/wap-frontflex/flexforms/${CCBILL_CONFIG.flexId}?${params.toString()}`;
+
+  if (import.meta.env.DEV) {
+    console.log(`[CCBill] ${tier.toUpperCase()} checkout URL:`, url);
+  }
+
+  return url;
 }
 
 // After payment, CCBill redirects users to these pages.

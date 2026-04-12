@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import CCBillCheckout from '@/components/CCBillCheckout';
+import { buildCheckoutUrl } from '@/lib/ccbill';
 
 type PlanId = 'free' | 'silver' | 'gold';
 
@@ -130,8 +130,6 @@ export default function SubscriptionUpgradePage() {
   //   }
   // };
 
-  const [showCheckout, setShowCheckout] = useState<"silver" | "gold" | null>(null);
-
   const handleChangePlan = async (planId: PlanId) => {
     if (!user) {
       navigate("/login");
@@ -146,9 +144,10 @@ export default function SubscriptionUpgradePage() {
     try {
       setLoadingPlanId(planId);
 
-      // Paid plans: show the CCBill widget checkout
+      // Paid plans: launch CCBill checkout as top-level navigation
       if (planId === "silver" || planId === "gold") {
-        setShowCheckout(planId);
+        const url = buildCheckoutUrl(planId);
+        window.open(url, "_blank");
         setLoadingPlanId(null);
         return;
       }
@@ -319,29 +318,6 @@ export default function SubscriptionUpgradePage() {
           })}
         </div>
 
-        {/* CCBill checkout widget — appears when user clicks a paid plan */}
-        {showCheckout && (
-          <div className="mt-12 max-w-lg mx-auto">
-            <div className="bg-white border-2 border-teal-200 rounded-2xl p-8 shadow-lg">
-              <div className="flex items-center justify-between mb-4">
-                <h2 className="text-xl font-bold text-gray-900">
-                  {showCheckout === "silver" ? "Silver" : "Gold"} Plan Checkout
-                </h2>
-                <button
-                  onClick={() => setShowCheckout(null)}
-                  className="text-gray-400 hover:text-gray-600 text-2xl leading-none"
-                >
-                  &times;
-                </button>
-              </div>
-              <p className="text-sm text-gray-500 mb-6">
-                Complete your payment below to activate your{" "}
-                {showCheckout === "silver" ? "Silver ($19/mo)" : "Gold ($39/mo)"} plan.
-              </p>
-              <CCBillCheckout tier={showCheckout} />
-            </div>
-          </div>
-        )}
       </div>
     </section>
   );
