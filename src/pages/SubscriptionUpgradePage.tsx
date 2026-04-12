@@ -5,7 +5,6 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import CCBillCheckout from '@/components/CCBillCheckout';
-import { CCBILL_WIDGET } from '@/lib/ccbill';
 
 type PlanId = 'free' | 'silver' | 'gold';
 
@@ -339,10 +338,7 @@ export default function SubscriptionUpgradePage() {
                 Complete your payment below to activate your{" "}
                 {showCheckout === "silver" ? "Silver ($19/mo)" : "Gold ($39/mo)"} plan.
               </p>
-              <CCBillCheckout
-                widgetClass={CCBILL_WIDGET[showCheckout].className}
-                scriptSrc={CCBILL_WIDGET.scriptSrc}
-              />
+              <CCBillCheckout tier={showCheckout} />
             </div>
           </div>
         )}

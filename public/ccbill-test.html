@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>CCBill Dynamic Pricing — Isolated Test</title>
+  <style>
+    body { font-family: sans-serif; max-width: 700px; margin: 40px auto; padding: 20px; }
+    h2 { margin-top: 30px; }
+    .frame-box { border: 2px dashed #ccc; min-height: 460px; margin-top: 10px; }
+    iframe { width: 100%; min-height: 450px; border: none; }
+    .note { background: #fffbe6; padding: 12px; border-radius: 6px; font-size: 13px; margin-bottom: 20px; }
+    code { background: #f0f0f0; padding: 2px 6px; border-radius: 3px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <h1>CCBill Dynamic Pricing — Isolated Test</h1>
+
+  <div class="note">
+    <strong>How this works:</strong> Both iframes below hit the same Flex ID and subaccount 0000,
+    but with different <code>initialPrice</code> / <code>recurringPrice</code> values.
+    If CCBill renders a checkout form, dynamic pricing is working.
+    If you see an error page or blank, check the <code>formDigest</code> values.
+  </div>
+
+  <h2>Silver — $19.00 / 30 days recurring</h2>
+  <p>URL: <code id="silver-url"></code></p>
+  <div class="frame-box">
+    <iframe id="silver-frame" title="Silver checkout test" allow="payment"></iframe>
+  </div>
+
+  <h2>Gold — $39.00 / 30 days recurring</h2>
+  <p>URL: <code id="gold-url"></code></p>
+  <div class="frame-box">
+    <iframe id="gold-frame" title="Gold checkout test" allow="payment"></iframe>
+  </div>
+
+  <script>
+    // Mirror the config from src/lib/ccbill.ts so this page is self-contained.
+    const CONFIG = {
+      clientAccnum: "955247",
+      clientSubacc: "0000",
+      currencyCode: "840",
+      flexId: "03ff568e-0540-40a0-9271-bb564caa9029",
+    };
+
+    const PLANS = {
+      silver: { initialPrice: "19.00", initialPeriod: "30", recurringPrice: "19.00", recurringPeriod: "30", numRebills: "99", formDigest: "13cc159fe31d77904fa0c18fb72ce8a9" },
+      gold:   { initialPrice: "39.00", initialPeriod: "30", recurringPrice: "39.00", recurringPeriod: "30", numRebills: "99", formDigest: "9ea5522c134632698fa3b29bcb695340" },
+    };
+
+    function buildUrl(plan) {
+      const p = new URLSearchParams({
+        clientAccnum: CONFIG.clientAccnum,
+        clientSubacc: CONFIG.clientSubacc,
+        initialPrice: plan.initialPrice,
+        initialPeriod: plan.initialPeriod,
+        recurringPrice: plan.recurringPrice,
+        recurringPeriod: plan.recurringPeriod,
+        numRebills: plan.numRebills,
+        currencyCode: CONFIG.currencyCode,
+        formDigest: plan.formDigest,
+      });
+      return `https://api.ccbill.com/wap-frontflex/flexforms/${CONFIG.flexId}?${p.toString()}`;
+    }
+
+    const silverUrl = buildUrl(PLANS.silver);
+    const goldUrl = buildUrl(PLANS.gold);
+
+    document.getElementById("silver-url").textContent = silverUrl;
+    document.getElementById("gold-url").textContent = goldUrl;
+    document.getElementById("silver-frame").src = silverUrl;
+    document.getElementById("gold-frame").src = goldUrl;
+  </script>
+</body>
+</html>

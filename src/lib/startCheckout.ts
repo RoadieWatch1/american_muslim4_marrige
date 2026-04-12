@@ -1,15 +1,15 @@
-import { CCBILL_WIDGET } from "@/lib/ccbill";
+import { buildCheckoutUrl, PLAN_PRICING, type PaidTier } from "@/lib/ccbill";
 
 /**
- * Opens a modal overlay and injects the CCBill live widget script inside it.
- * CCBill's script renders the checkout form into the visible container.
+ * Opens a modal overlay with the CCBill checkout form embedded as an iframe.
+ * Uses dynamic pricing — both Silver and Gold go through subaccount 0000.
  */
-export function startCheckout(tier: "silver" | "gold") {
-  const config = CCBILL_WIDGET[tier];
+export function startCheckout(tier: PaidTier) {
+  const plan = PLAN_PRICING[tier];
 
-  if (!config?.className || config.className.startsWith("PASTE_")) {
+  if (!plan.formDigest) {
     alert(
-      `CCBill checkout for the ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan is not configured yet. Please contact support.`
+      `CCBill checkout for the ${tier.charAt(0).toUpperCase() + tier.slice(1)} plan is not fully configured yet (missing formDigest). Please contact support.`
     );
     return;
   }
@@ -26,8 +26,6 @@ export function startCheckout(tier: "silver" | "gold") {
     background: rgba(0, 0, 0, 0.6);
     display: flex; align-items: center; justify-content: center;
   `;
-
-  // Close when clicking the backdrop
   overlay.addEventListener("click", (e) => {
     if (e.target === overlay) overlay.remove();
   });
@@ -36,7 +34,7 @@ export function startCheckout(tier: "silver" | "gold") {
   const modal = document.createElement("div");
   modal.style.cssText = `
     background: #fff; border-radius: 12px; padding: 24px;
-    max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;
+    max-width: 520px; width: 90%; max-height: 90vh; overflow-y: auto;
     box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
     position: relative;
   `;
@@ -58,21 +56,19 @@ export function startCheckout(tier: "silver" | "gold") {
     margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #111;
   `;
 
-  // --- CCBill widget container (VISIBLE so the script can render into it) ---
-  const widgetContainer = document.createElement("div");
-  widgetContainer.className = "ccbillWidgetContainer";
-
-  const widgetScript = document.createElement("script");
-  widgetScript.type = "text/javascript";
-  widgetScript.className = config.className;
-  widgetScript.src = CCBILL_WIDGET.scriptSrc;
-
-  widgetContainer.appendChild(widgetScript);
+  // --- Iframe with CCBill dynamic pricing URL ---
+  const iframe = document.createElement("iframe");
+  iframe.src = buildCheckoutUrl(tier);
+  iframe.title = `CCBill ${tier} checkout`;
+  iframe.allow = "payment";
+  iframe.style.cssText = `
+    width: 100%; min-height: 450px; border: none;
+  `;
 
   // Assemble modal
   modal.appendChild(closeBtn);
   modal.appendChild(title);
-  modal.appendChild(widgetContainer);
+  modal.appendChild(iframe);
   overlay.appendChild(modal);
   document.body.appendChild(overlay);
 }
