@@ -1,12 +1,8 @@
 import { CCBILL_WIDGET } from "@/lib/ccbill";
 
 /**
- * Launches the CCBill FlexForms checkout widget for the given plan.
- *
- * How it works:
- *  1. Creates a hidden container with the widget class CCBill expects
- *  2. Injects the CCBill live widget script
- *  3. CCBill's script detects the container and opens the checkout overlay
+ * Opens a modal overlay and injects the CCBill live widget script inside it.
+ * CCBill's script renders the checkout form into the visible container.
  */
 export function startCheckout(tier: "silver" | "gold") {
   const config = CCBILL_WIDGET[tier];
@@ -18,28 +14,65 @@ export function startCheckout(tier: "silver" | "gold") {
     return;
   }
 
-  // Remove any previous widget containers so we don't stack them
-  document
-    .querySelectorAll(".ccbillWidgetContainer")
-    .forEach((el) => el.remove());
+  // Remove any existing checkout modal
+  const existing = document.getElementById("ccbill-checkout-overlay");
+  if (existing) existing.remove();
 
-  // Create the widget container CCBill's script looks for
-  const container = document.createElement("div");
-  container.className = "ccbillWidgetContainer";
-  container.style.position = "fixed";
-  container.style.top = "0";
-  container.style.left = "0";
-  container.style.width = "0";
-  container.style.height = "0";
-  container.style.overflow = "hidden";
-  container.style.zIndex = "99999";
+  // --- Overlay backdrop ---
+  const overlay = document.createElement("div");
+  overlay.id = "ccbill-checkout-overlay";
+  overlay.style.cssText = `
+    position: fixed; inset: 0; z-index: 99999;
+    background: rgba(0, 0, 0, 0.6);
+    display: flex; align-items: center; justify-content: center;
+  `;
 
-  // The script element with the class that identifies the specific flow
-  const script = document.createElement("script");
-  script.type = "text/javascript";
-  script.className = config.className;
-  script.src = CCBILL_WIDGET.scriptSrc;
+  // Close when clicking the backdrop
+  overlay.addEventListener("click", (e) => {
+    if (e.target === overlay) overlay.remove();
+  });
 
-  container.appendChild(script);
-  document.body.appendChild(container);
+  // --- Modal container ---
+  const modal = document.createElement("div");
+  modal.style.cssText = `
+    background: #fff; border-radius: 12px; padding: 24px;
+    max-width: 500px; width: 90%; max-height: 90vh; overflow-y: auto;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+    position: relative;
+  `;
+
+  // --- Close button ---
+  const closeBtn = document.createElement("button");
+  closeBtn.textContent = "\u00d7";
+  closeBtn.style.cssText = `
+    position: absolute; top: 12px; right: 16px;
+    background: none; border: none; font-size: 24px;
+    cursor: pointer; color: #666; line-height: 1;
+  `;
+  closeBtn.addEventListener("click", () => overlay.remove());
+
+  // --- Title ---
+  const title = document.createElement("h2");
+  title.textContent = `${tier.charAt(0).toUpperCase() + tier.slice(1)} Plan Checkout`;
+  title.style.cssText = `
+    margin: 0 0 16px 0; font-size: 20px; font-weight: 600; color: #111;
+  `;
+
+  // --- CCBill widget container (VISIBLE so the script can render into it) ---
+  const widgetContainer = document.createElement("div");
+  widgetContainer.className = "ccbillWidgetContainer";
+
+  const widgetScript = document.createElement("script");
+  widgetScript.type = "text/javascript";
+  widgetScript.className = config.className;
+  widgetScript.src = CCBILL_WIDGET.scriptSrc;
+
+  widgetContainer.appendChild(widgetScript);
+
+  // Assemble modal
+  modal.appendChild(closeBtn);
+  modal.appendChild(title);
+  modal.appendChild(widgetContainer);
+  overlay.appendChild(modal);
+  document.body.appendChild(overlay);
 }
