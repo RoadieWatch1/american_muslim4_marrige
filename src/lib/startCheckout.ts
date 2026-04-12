@@ -1,23 +1,12 @@
-import { supabase } from "@/lib/supabase";
+import { CCBILL_LINKS } from "@/lib/ccbill";
 
-const FUNCTIONS_URL = import.meta.env.VITE_SUPABASE_FUNCTIONS_URL;
+export function startCheckout(tier: "silver" | "gold") {
+  const url = CCBILL_LINKS[tier];
 
-export async function startCheckout(tier: "silver" | "gold") {
-  const { data } = await supabase.auth.getSession();
-  const token = data.session?.access_token;
-  if (!token) throw new Error("Not logged in");
+  if (!url || url.startsWith("PASTE_")) {
+    alert(`CCBill checkout URL for the ${tier} plan is not configured yet. Please contact support.`);
+    return;
+  }
 
-  const res = await fetch(`${FUNCTIONS_URL}/create-checkout-session`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${token}`,
-    },
-    body: JSON.stringify({ tier }),
-  });
-
-  const json = await res.json();
-  if (!res.ok) throw new Error(json?.error || "Failed to create checkout session");
-
-  window.location.href = json.url;
+  window.location.href = url;
 }

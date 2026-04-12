@@ -3,9 +3,9 @@ import { Check, X, Sparkles, Crown, Zap } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { useAuth } from '@/contexts/AuthContext';
-import { supabase } from '@/lib/supabase';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
+import { startCheckout } from '@/lib/startCheckout';
 
 const tiers = [
   {
@@ -28,12 +28,12 @@ const tiers = [
       'Read receipts',
     ],
     cta: 'Current Plan',
-    priceId: null,
+    planId: null as null | 'silver' | 'gold',
     tier: 'basic',
   },
   {
-    name: 'Premium',
-    price: '$9.99',
+    name: 'Silver',
+    price: '$19.00',
     priceMonthly: '/month',
     description: 'Unlock more matches and visibility',
     icon: Sparkles,
@@ -52,18 +52,18 @@ const tiers = [
       'Top search results',
       'VIP support',
     ],
-    cta: 'Upgrade to Premium',
-    priceId: 'price_premium_999',
-    tier: 'premium',
+    cta: 'Upgrade to Silver',
+    planId: 'silver' as const,
+    tier: 'silver',
   },
   {
-    name: 'Elite',
-    price: '$19.99',
+    name: 'Gold',
+    price: '$39.00',
     priceMonthly: '/month',
     description: 'Maximum visibility and all features',
     icon: Crown,
     features: [
-      'Everything in Premium',
+      'Everything in Silver',
       'Weekly profile boost',
       'Top search results',
       'VIP customer support',
@@ -72,9 +72,9 @@ const tiers = [
       'Advanced analytics',
     ],
     notIncluded: [],
-    cta: 'Upgrade to Elite',
-    priceId: 'price_elite_1999',
-    tier: 'elite',
+    cta: 'Upgrade to Gold',
+    planId: 'gold' as const,
+    tier: 'gold',
   },
 ];
 
@@ -84,7 +84,7 @@ export default function Pricing() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
 
-  const handleSubscribe = async (priceId: string | null, tierName: string) => {
+  const handleSubscribe = (planId: null | 'silver' | 'gold', tierName: string) => {
     if (!user) {
       toast({
         title: 'Sign in required',
@@ -95,35 +95,12 @@ export default function Pricing() {
       return;
     }
 
-    if (!priceId) return;
+    if (!planId) return;
 
     setLoading(tierName);
-    try {
-      const { data, error } = await supabase.functions.invoke('create-checkout-session', {
-        body: {
-          priceId,
-          userId: user.id,
-          customerEmail: user.email,
-          successUrl: `${window.location.origin}/settings?tab=billing&success=true`,
-          cancelUrl: `${window.location.origin}/pricing`,
-        },
-      });
-
-      if (error) throw error;
-
-      if (data?.url) {
-        window.location.href = data.url;
-      }
-    } catch (error) {
-      console.error('Error creating checkout session:', error);
-      toast({
-        title: 'Error',
-        description: 'Failed to start checkout process. Please try again.',
-        variant: 'destructive',
-      });
-    } finally {
-      setLoading(null);
-    }
+    startCheckout(planId);
+    // CCBill redirect is synchronous — reset loading in case user cancels back
+    setTimeout(() => setLoading(null), 3000);
   };
 
   const currentTier = profile?.subscription_tier || 'basic';
@@ -142,12 +119,12 @@ export default function Pricing() {
           {tiers.map((tier) => {
             const Icon = tier.icon;
             const isCurrentPlan = currentTier === tier.tier;
-            const isDowngrade = 
-              (currentTier === 'elite' && (tier.tier === 'premium' || tier.tier === 'basic')) ||
-              (currentTier === 'premium' && tier.tier === 'basic');
+            const isDowngrade =
+              (currentTier === 'gold' && (tier.tier === 'silver' || tier.tier === 'basic')) ||
+              (currentTier === 'silver' && tier.tier === 'basic');
 
             return (
-              <Card 
+              <Card
                 key={tier.name}
                 className={`relative ${tier.popular ? 'border-pink-500 shadow-xl scale-105' : ''}`}
               >
@@ -158,7 +135,7 @@ export default function Pricing() {
                     </span>
                   </div>
                 )}
-                
+
                 <CardHeader className="text-center pb-8">
                   <div className="mx-auto w-12 h-12 bg-pink-100 rounded-full flex items-center justify-center mb-4">
                     <Icon className="w-6 h-6 text-pink-600" />
@@ -192,13 +169,16 @@ export default function Pricing() {
                   <Button
                     className="w-full"
                     variant={isCurrentPlan ? 'outline' : tier.popular ? 'default' : 'secondary'}
-                    disabled={isCurrentPlan || loading !== null}
-                    onClick={() => handleSubscribe(tier.priceId, tier.name)}
+                    disabled={isCurrentPlan || loading !== null || !tier.planId}
+                    onClick={() => handleSubscribe(tier.planId, tier.name)}
                   >
-                    {loading === tier.name ? 'Processing...' : 
-                     isCurrentPlan ? 'Current Plan' :
-                     isDowngrade ? `Downgrade to ${tier.name}` : 
-                     tier.cta}
+                    {loading === tier.name
+                      ? 'Redirecting...'
+                      : isCurrentPlan
+                      ? 'Current Plan'
+                      : isDowngrade
+                      ? `Downgrade to ${tier.name}`
+                      : tier.cta}
                   </Button>
                 </CardContent>
               </Card>
@@ -208,7 +188,7 @@ export default function Pricing() {
 
         <div className="mt-12 text-center text-sm text-gray-600 max-w-2xl mx-auto">
           <p>
-            All plans include our commitment to Islamic values and guidelines. 
+            All plans include our commitment to Islamic values and guidelines.
             Cancel or change your plan anytime from your account settings.
           </p>
         </div>
