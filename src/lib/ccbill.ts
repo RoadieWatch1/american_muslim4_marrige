@@ -13,11 +13,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const CCBILL_LINKS: Record<"silver" | "gold", string> = {
-  // Silver plan — $19.00/month
-  silver: "PASTE_SILVER_CCBILL_FLEXFORM_URL_HERE",
+  // Silver plan — $19.00/month (LIVE)
+  silver: "https://api.ccbill.com/wap-frontflex/flexforms/03ff568e-0540-40a0-9271-bb564caa9029",
 
   // Gold plan — $39.00/month
-  gold: "PASTE_GOLD_CCBILL_FLEXFORM_URL_HERE",
+  // Currently using the same FlexForm as Silver.
+  // When you have a separate Gold flow in CCBill Admin, paste its URL here.
+  gold: "https://api.ccbill.com/wap-frontflex/flexforms/03ff568e-0540-40a0-9271-bb564caa9029",
 };
 
 // After payment, CCBill will redirect users to these pages.
