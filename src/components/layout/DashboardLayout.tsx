@@ -5,11 +5,47 @@ import DashboardNav from "./DashboardNav";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
+const LAST_SEEN_PING_MS = 30_000;
+
 export default function DashboardLayout() {
   const { user } = useAuth();
 
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [pendingIntroRequests, setPendingIntroRequests] = useState(0);
+
+  // Presence: keep profiles.last_seen_at fresh whenever the user is signed in
+  // and inside the authenticated app, not just on /messages.
+  useEffect(() => {
+    if (!user) return;
+
+    let interval: number | null = null;
+
+    const ping = async () => {
+      try {
+        const { error } = await supabase.functions.invoke('touch_last_seen', {
+          body: {},
+        });
+        if (error) console.warn('touch_last_seen error:', error);
+      } catch (e) {
+        console.warn('touch_last_seen failed:', e);
+      }
+    };
+
+    void ping();
+    interval = window.setInterval(() => {
+      void ping();
+    }, LAST_SEEN_PING_MS);
+
+    const onVis = () => {
+      if (document.visibilityState === 'visible') void ping();
+    };
+    document.addEventListener('visibilitychange', onVis);
+
+    return () => {
+      if (interval) window.clearInterval(interval);
+      document.removeEventListener('visibilitychange', onVis);
+    };
+  }, [user?.id]);
 
   const loadCounts = useCallback(async () => {
     if (!user) return;

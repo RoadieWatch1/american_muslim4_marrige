@@ -13,8 +13,8 @@ export interface WaliLink {
 
 export interface IntroRequest {
   id: string;
-  requester_id: string;
-  recipient_id: string;
+  from_user_id: string;
+  to_user_id: string;
   message: string | null;
   status: 'pending' | 'approved' | 'rejected';
   wali_approved: boolean | null;

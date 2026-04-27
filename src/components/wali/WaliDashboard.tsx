@@ -49,15 +49,15 @@ export default function WaliDashboard({ waliId, wardId, wardName }: WaliDashboar
         // Active conversations
         supabase
           .from('messages')
-          .select('sender_id, recipient_id')
-          .or(`sender_id.eq.${wardId},recipient_id.eq.${wardId}`)
+          .select('sender_id, receiver_id')
+          .or(`sender_id.eq.${wardId},receiver_id.eq.${wardId}`)
           .gte('created_at', new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()),
         
         // Today's messages
         supabase
           .from('messages')
           .select('id')
-          .or(`sender_id.eq.${wardId},recipient_id.eq.${wardId}`)
+          .or(`sender_id.eq.${wardId},receiver_id.eq.${wardId}`)
           .gte('created_at', new Date().toISOString().split('T')[0]),
         
         // Communication boundaries
@@ -71,7 +71,8 @@ export default function WaliDashboard({ waliId, wardId, wardName }: WaliDashboar
       // Count unique conversations
       const uniqueConversations = new Set();
       conversationsRes.data?.forEach(msg => {
-        const other = msg.sender_id === wardId ? msg.recipient_id : msg.sender_id;
+        const other = msg.sender_id === wardId ? msg.receiver_id : msg.sender_id;
+        if (!other) return;
         uniqueConversations.add(other);
       });
 

@@ -18,8 +18,6 @@ type WaliLink = {
   status: string;
 };
 
-const LAST_SEEN_PING_MS = 30_000;
-
 export default function Messages() {
   const { user } = useAuth();
   const [conversations, setConversations] = useState<Conversation[]>([]);
@@ -33,45 +31,8 @@ export default function Messages() {
     selectedIdRef.current = selectedConversation?.id ?? null;
   }, [selectedConversation?.id]);
 
-  // ─────────────────────────────────────────────────────────────
-  // Presence: keep profiles.last_seen_at fresh while user is in Messages
-  // ─────────────────────────────────────────────────────────────
-  useEffect(() => {
-    if (!user) return;
-
-    let interval: number | null = null;
-
-    const ping = async () => {
-      try {
-        // Your edge function should set profiles.last_seen_at for auth user
-        const { error } = await supabase.functions.invoke('touch_last_seen', {
-          body: {},
-        });
-        if (error) console.warn('touch_last_seen error:', error);
-      } catch (e) {
-        console.warn('touch_last_seen failed:', e);
-      }
-    };
-
-    // initial ping immediately
-    void ping();
-
-    // periodic ping
-    interval = window.setInterval(() => {
-      void ping();
-    }, LAST_SEEN_PING_MS);
-
-    // when user returns to tab, ping again
-    const onVis = () => {
-      if (document.visibilityState === 'visible') void ping();
-    };
-    document.addEventListener('visibilitychange', onVis);
-
-    return () => {
-      if (interval) window.clearInterval(interval);
-      document.removeEventListener('visibilitychange', onVis);
-    };
-  }, [user?.id]);
+  // Presence heartbeat is handled globally in DashboardLayout so
+  // last_seen_at reflects whole-app activity, not just /messages.
 
   useEffect(() => {
     if (!user) return;

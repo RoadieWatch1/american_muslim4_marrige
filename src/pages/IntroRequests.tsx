@@ -198,6 +198,19 @@ export default function IntroRequests() {
       return;
     }
 
+    // On approval, create a match so the conversation actually opens up.
+    // Without this, the "match" email below points at an empty Messages tab.
+    if (nextStatus === 'approved') {
+      const [u1, u2] = [reqRow.from_user_id, reqRow.to_user_id].sort();
+      const { error: matchError } = await supabase.from('matches').upsert(
+        { user1_id: u1, user2_id: u2 },
+        { onConflict: 'user1_id,user2_id' }
+      );
+      if (matchError) {
+        console.error('Error creating match from approved intro:', matchError);
+      }
+    }
+
     await loadData();
 
     if (nextStatus === 'approved') toast.success('You accepted this introduction.');

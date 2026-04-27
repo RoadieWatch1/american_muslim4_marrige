@@ -45,13 +45,13 @@ export default function ConversationMonitor({ waliId, wardId }: ConversationMoni
         .select(`
           *,
           sender:profiles!messages_sender_id_fkey(
-            id, first_name, last_name, profile_photo_url
+            id, first_name, last_name
           ),
-          recipient:profiles!messages_recipient_id_fkey(
-            id, first_name, last_name, profile_photo_url
+          receiver:profiles!messages_receiver_id_fkey(
+            id, first_name, last_name
           )
         `)
-        .or(`sender_id.eq.${wardId},recipient_id.eq.${wardId}`)
+        .or(`sender_id.eq.${wardId},receiver_id.eq.${wardId}`)
         .order('created_at', { ascending: false });
 
       if (error) throw error;
@@ -59,29 +59,30 @@ export default function ConversationMonitor({ waliId, wardId }: ConversationMoni
       // Group messages by conversation
       const conversationMap = new Map();
       messages?.forEach(msg => {
-        const otherId = msg.sender_id === wardId ? msg.recipient_id : msg.sender_id;
-        const otherProfile = msg.sender_id === wardId ? msg.recipient : msg.sender;
-        
+        const otherId = msg.sender_id === wardId ? msg.receiver_id : msg.sender_id;
+        const otherProfile = msg.sender_id === wardId ? msg.receiver : msg.sender;
+        if (!otherId) return;
+
         if (!conversationMap.has(otherId)) {
           conversationMap.set(otherId, {
             id: otherId,
             profile: otherProfile,
-            lastMessage: msg.message,
+            lastMessage: msg.content,
             lastMessageTime: msg.created_at,
             unreadCount: 0,
             totalMessages: 0,
             flaggedMessages: 0
           });
         }
-        
+
         const conv = conversationMap.get(otherId);
         conv.totalMessages++;
-        
+
         // Check for potentially inappropriate content (simplified)
-        if (msg.message && (
-          msg.message.toLowerCase().includes('phone') ||
-          msg.message.toLowerCase().includes('meet') ||
-          msg.message.toLowerCase().includes('private')
+        if (msg.content && (
+          msg.content.toLowerCase().includes('phone') ||
+          msg.content.toLowerCase().includes('meet') ||
+          msg.content.toLowerCase().includes('private')
         )) {
           conv.flaggedMessages++;
         }
@@ -100,7 +101,7 @@ export default function ConversationMonitor({ waliId, wardId }: ConversationMoni
       const { data, error } = await supabase
         .from('messages')
         .select('*')
-        .or(`and(sender_id.eq.${wardId},recipient_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},recipient_id.eq.${wardId})`)
+        .or(`and(sender_id.eq.${wardId},receiver_id.eq.${otherUserId}),and(sender_id.eq.${otherUserId},receiver_id.eq.${wardId})`)
         .order('created_at', { ascending: true });
 
       if (error) throw error;
@@ -297,7 +298,7 @@ export default function ConversationMonitor({ waliId, wardId }: ConversationMoni
                           : 'bg-gray-100 text-gray-900'
                       }`}
                     >
-                      <p className="text-sm">{msg.message}</p>
+                      <p className="text-sm">{msg.content}</p>
                       <p className="text-xs opacity-70 mt-1">
                         {new Date(msg.created_at).toLocaleString()}
                       </p>
