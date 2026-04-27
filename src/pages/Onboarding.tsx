@@ -416,6 +416,7 @@ export default function Onboarding() {
     const lifestyle: any = {};
     [
       'height',
+      'body_type',
       'hobbies',
       'personality_traits',
       'life_goals',
@@ -434,6 +435,8 @@ export default function Onboarding() {
       'madhab',
       'hijab_preference',
       'beard_preference',
+      'employment_status',
+      'annual_income_range',
     ].forEach((key) => {
       if (merged[key] !== undefined && merged[key] !== null && merged[key] !== '') {
         lifestyle[key] = merged[key];

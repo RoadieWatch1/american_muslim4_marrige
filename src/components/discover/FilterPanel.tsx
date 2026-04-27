@@ -67,6 +67,8 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
   const myLng = (profile as unknown as WithCoords | undefined)?.longitude ?? null;
   const hasMyCoords = typeof myLat === 'number' && typeof myLng === 'number';
 
+  const anywhereInWorld = !!(localFilters as any).anywhereInWorld;
+
   const distanceMiles =
     (localFilters as any).maxDistanceMiles ??
     50; // default if not set (miles)
@@ -128,19 +130,47 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
               </div>
             ) : (
               <>
-                <div className="text-sm text-gray-600 mt-1">
-                  Up to <span className="font-semibold">{distanceMiles}</span> miles
+                <div className="mt-2 flex items-center space-x-2">
+                  <Checkbox
+                    id="anywhereInWorld"
+                    checked={anywhereInWorld}
+                    onCheckedChange={(checked) =>
+                      setLocalFilters({
+                        ...(localFilters as any),
+                        anywhereInWorld: !!checked,
+                        maxDistanceMiles: checked
+                          ? undefined
+                          : (localFilters as any).maxDistanceMiles ?? 50,
+                      })
+                    }
+                  />
+                  <label htmlFor="anywhereInWorld" className="text-sm cursor-pointer">
+                    Open to matches anywhere in the world 🌍
+                  </label>
                 </div>
-                <Slider
-                  min={5}
-                  max={500}
-                  step={5}
-                  value={[distanceMiles]}
-                  onValueChange={([v]) =>
-                    setLocalFilters({ ...(localFilters as any), maxDistanceMiles: v })
-                  }
-                  className="mt-2"
-                />
+
+                {anywhereInWorld ? (
+                  <div className="mt-2 p-3 rounded-lg bg-emerald-50 text-sm text-emerald-700">
+                    Distance is off — we'll show you matches from any country.
+                  </div>
+                ) : (
+                  <>
+                    <div className="text-sm text-gray-600 mt-3">
+                      Up to <span className="font-semibold">{distanceMiles}</span> miles
+                    </div>
+                    <Slider
+                      min={5}
+                      max={1000}
+                      step={5}
+                      value={[distanceMiles]}
+                      onValueChange={([v]) =>
+                        setLocalFilters({ ...(localFilters as any), maxDistanceMiles: v })
+                      }
+                      className="mt-2"
+                    />
+                  </>
+                )}
+
                 <div className="mt-2 flex items-center space-x-2">
                   <Checkbox
                     id="sortByDistance"

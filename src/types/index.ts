@@ -65,6 +65,11 @@ export interface DiscoverFilters {
   // we keep it for UI now, but we won't send to RPC yet
   locationRadius?: number;
 
+  // Distance filter (miles). When anywhereInWorld is true, no cap is applied.
+  maxDistanceMiles?: number;
+  sortByDistance?: boolean;
+  anywhereInWorld?: boolean;
+
   denomination?: string;
   practiceLevel?: PracticeLevel[];
 

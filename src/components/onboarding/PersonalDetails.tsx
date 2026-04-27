@@ -68,6 +68,7 @@ export const PersonalDetails: React.FC<PersonalDetailsProps> = ({
   const [formData, setFormData] = useState({
     height_feet: initialFeet,
     height_inches: initialInches,
+    body_type: lifestyle.body_type || '',
     ethnicity: initialData.ethnicity || '',
     languages: initialLanguagesString,
     hobbies: lifestyle.hobbies || '',
@@ -182,6 +183,34 @@ export const PersonalDetails: React.FC<PersonalDetailsProps> = ({
               <p className="mt-1 text-xs text-gray-500">
                 Selected: {formData.height_feet}' {formData.height_inches}"
               </p>
+            </div>
+
+            <div>
+              <Label htmlFor="body_type">Body Type</Label>
+              <Select
+                value={formData.body_type}
+                onValueChange={(v) =>
+                  setFormData({ ...formData, body_type: v })
+                }
+              >
+                <SelectTrigger id="body_type">
+                  <SelectValue placeholder="Select your body type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="slim">Slim</SelectItem>
+                  <SelectItem value="slender">Slender</SelectItem>
+                  <SelectItem value="athletic">Athletic</SelectItem>
+                  <SelectItem value="average">Average</SelectItem>
+                  <SelectItem value="curvy">Curvy</SelectItem>
+                  <SelectItem value="thick_fit">Thick Fit</SelectItem>
+                  <SelectItem value="full_figured">Full-figured</SelectItem>
+                  <SelectItem value="muscular">Muscular</SelectItem>
+                  <SelectItem value="prefer_not_to_say">
+                    Prefer not to say
+                  </SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="mt-1 text-xs text-gray-500">Optional.</p>
             </div>
 
             <div>
