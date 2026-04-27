@@ -142,7 +142,8 @@ export default function Messages() {
       const { data: matchesForUser, error: matchesErrorUser } = await supabase
         .from('matches')
         .select('*')
-        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`);
+        .or(`user1_id.eq.${user.id},user2_id.eq.${user.id}`)
+        .order('last_message_at', { ascending: false, nullsFirst: false });
 
       if (matchesErrorUser) {
         console.error('Error loading matches for user:', matchesErrorUser);
@@ -330,6 +331,11 @@ export default function Messages() {
           <ChatInterface
             conversation={selectedConversation}
             onBack={() => setSelectedConversation(null)}
+            onConversationGone={() => {
+              const goneId = selectedConversation.id;
+              setConversations((prev) => prev.filter((c) => c.id !== goneId));
+              setSelectedConversation(null);
+            }}
           />
         ) : (
           <div className="flex flex-col items-center justify-center h-full text-center p-6">

@@ -5,10 +5,22 @@ import { MessageBubble } from './MessageBubble';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { Send, ArrowLeft, Eye, EyeOff } from 'lucide-react';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from '@/components/ui/alert-dialog';
+import { Send, ArrowLeft, ShieldOff } from 'lucide-react';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { notifyNewMessage } from '@/lib/notifications';
+import { toast } from 'sonner';
 
 // same helper as in ConversationList
 const AVATAR_COLORS = [
@@ -31,18 +43,23 @@ function getAvatarColor(userId: string) {
 interface ChatInterfaceProps {
   conversation: Conversation;
   onBack: () => void;
+  onConversationGone?: () => void;
 }
 
 // Consider user “offline” if they haven’t been seen in X minutes
 const OFFLINE_MINUTES = 2;
 
-export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
+const PAGE_SIZE = 50;
+
+export function ChatInterface({ conversation, onBack, onConversationGone }: ChatInterfaceProps) {
   const { user } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState('');
   const [isTyping] = useState(false); // placeholder if you add typing later
-  const [waliVisible, setWaliVisible] = useState(conversation.wali_can_view);
   const [loading, setLoading] = useState(false);
+  const [hasMoreOlder, setHasMoreOlder] = useState(false);
+  const [loadingOlder, setLoadingOlder] = useState(false);
+  const [blocking, setBlocking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Load + subscribe
@@ -90,13 +107,42 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
   }, [conversation.id]);
 
   const loadMessages = async () => {
+    // Load the most recent page, then reverse so oldest-of-page is on top.
     const { data } = await supabase
       .from('messages')
       .select('*')
       .eq('conversation_id', conversation.id)
-      .order('created_at', { ascending: true });
+      .order('created_at', { ascending: false })
+      .limit(PAGE_SIZE);
 
-    if (data) setMessages(data as Message[]);
+    if (data) {
+      const ordered = (data as Message[]).slice().reverse();
+      setMessages(ordered);
+      setHasMoreOlder(data.length === PAGE_SIZE);
+    }
+  };
+
+  const loadOlder = async () => {
+    if (loadingOlder || messages.length === 0) return;
+    setLoadingOlder(true);
+    try {
+      const oldest = messages[0];
+      const { data } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('conversation_id', conversation.id)
+        .lt('created_at', oldest.created_at)
+        .order('created_at', { ascending: false })
+        .limit(PAGE_SIZE);
+
+      if (data) {
+        const olderOrdered = (data as Message[]).slice().reverse();
+        setMessages((prev) => [...olderOrdered, ...prev]);
+        setHasMoreOlder(data.length === PAGE_SIZE);
+      }
+    } finally {
+      setLoadingOlder(false);
+    }
   };
 
   const markAsRead = async () => {
@@ -217,6 +263,25 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
+  const handleBlock = async () => {
+    if (!user || blocking) return;
+    setBlocking(true);
+    try {
+      const { error } = await supabase.rpc('block_user', {
+        p_blocked_id: conversation.other_user.id,
+      });
+      if (error) {
+        console.error('block_user error:', error);
+        toast.error('Could not block this member. Please try again.');
+        return;
+      }
+      toast.success('User blocked. The conversation has been removed.');
+      onConversationGone?.();
+    } finally {
+      setBlocking(false);
+    }
+  };
+
   const displayName = conversation.other_user.firstName || 'Member';
   const initial = displayName.charAt(0).toUpperCase();
   const avatarColor = getAvatarColor(conversation.other_user.id);
@@ -243,13 +308,52 @@ export function ChatInterface({ conversation, onBack }: ChatInterfaceProps) {
           {isTyping && <p className="text-xs text-muted-foreground">typing...</p>}
         </div>
 
-        <Button variant="ghost" size="icon" onClick={() => setWaliVisible((v) => !v)}>
-          {waliVisible ? <Eye className="h-5 w-5" /> : <EyeOff className="h-5 w-5" />}
-        </Button>
+        {!conversation.wali_can_view && (
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="ghost" size="icon" title="Block & unmatch">
+                <ShieldOff className="h-5 w-5" />
+              </Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Block {displayName}?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  They will be unmatched, this conversation will be removed,
+                  and you will no longer see each other in Discover. This
+                  cannot be undone from the chat — you will need to unblock
+                  them from settings.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancel</AlertDialogCancel>
+                <AlertDialogAction
+                  onClick={handleBlock}
+                  disabled={blocking}
+                  className="bg-red-600 hover:bg-red-700"
+                >
+                  {blocking ? 'Blocking...' : 'Block & unmatch'}
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        )}
       </div>
 
       {/* Messages */}
       <div className="flex-1 overflow-y-auto p-4">
+        {hasMoreOlder && (
+          <div className="text-center mb-3">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={loadOlder}
+              disabled={loadingOlder}
+            >
+              {loadingOlder ? 'Loading...' : 'Load earlier messages'}
+            </Button>
+          </div>
+        )}
         {messages.map((msg) => (
           <MessageBubble key={msg.id} message={msg} isSender={msg.sender_id === user?.id} />
         ))}
