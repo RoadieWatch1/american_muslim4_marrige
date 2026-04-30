@@ -157,13 +157,28 @@ export default function Analytics() {
 
       const messages: MessageRow[] = messagesRaw || [];
 
+      // Photo count for the profile-completion checks. The auth context
+      // loads profiles.* which doesn't include the joined media URL, so
+      // we query media directly here.
+      const { count: photoCount, error: photoErr } = await supabase
+        .from('media')
+        .select('id', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .eq('type', 'photo')
+        .eq('status', 'approved');
+
+      if (photoErr) {
+        console.error('Error counting photos for analytics:', photoErr);
+      }
+
       const processed = processAnalyticsData(
         likes,
         matches,
         messages,
         user.id,
         navigate,
-        profile
+        profile,
+        photoCount ?? 0
       );
       setAnalyticsData(processed);
     } catch (error) {
@@ -182,7 +197,8 @@ export default function Analytics() {
     messages: MessageRow[],
     userId: string,
     navigateFn: (path: string) => void,
-    userProfile: any
+    userProfile: any,
+    photoCount: number
   ) => {
     // ---------------- Profile “views” (approx) ----------------
     // Treat any like / super_intro / pass directed *to* you as a view.
@@ -352,7 +368,8 @@ export default function Analytics() {
 
     // ---------------- Profile completion (real, computed from auth profile) ----------------
     const completionFields = [
-      { name: 'Profile photo', filled: !!userProfile?.profile_photo_url },
+      { name: 'Profile photo', filled: photoCount > 0 },
+      { name: 'Multiple photos (3+)', filled: photoCount >= 3 },
       { name: 'Bio', filled: !!(userProfile?.bio && String(userProfile.bio).trim().length > 0) },
       { name: 'Date of birth', filled: !!userProfile?.dob },
       { name: 'City & state', filled: !!(userProfile?.city && userProfile?.state) },
