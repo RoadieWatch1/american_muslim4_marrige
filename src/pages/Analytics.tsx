@@ -9,7 +9,7 @@ import { ProfileViewsChart } from '@/components/analytics/ProfileViewsChart';
 import { MatchSuccessRate } from '@/components/analytics/MatchSuccessRate';
 import { ActivityHeatmap } from '@/components/analytics/ActivityHeatmap';
 import { MessageStats } from '@/components/analytics/MessageStats';
-import { ProfileAttributes } from '@/components/analytics/ProfileAttributes';
+import { ProfileCompletion } from '@/components/analytics/ProfileCompletion';
 import { PersonalizedTips } from '@/components/analytics/PersonalizedTips';
 
 import {
@@ -52,7 +52,7 @@ type MessageRow = {
 };
 
 export default function Analytics() {
-  const { user } = useAuth();
+  const { user, profile } = useAuth();
   const navigate = useNavigate();
   const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
   const [loading, setLoading] = useState(true);
@@ -63,7 +63,7 @@ export default function Analytics() {
     matchStats: {},
     activityHeatmap: [],
     messageStats: {},
-    profileAttributes: [],
+    profileCompletion: { fields: [], percentage: 0 },
     tips: [],
   });
 
@@ -162,7 +162,8 @@ export default function Analytics() {
         matches,
         messages,
         user.id,
-        navigate
+        navigate,
+        profile
       );
       setAnalyticsData(processed);
     } catch (error) {
@@ -180,7 +181,8 @@ export default function Analytics() {
     matches: MatchRow[],
     messages: MessageRow[],
     userId: string,
-    navigateFn: (path: string) => void
+    navigateFn: (path: string) => void,
+    userProfile: any
   ) => {
     // ---------------- Profile “views” (approx) ----------------
     // Treat any like / super_intro / pass directed *to* you as a view.
@@ -223,9 +225,12 @@ export default function Analytics() {
       likesSent > 0 ? (matchesCreated / likesSent) * 100 : 0;
 
     // ---------------- Activity heatmap ----------------
-    // Use matches as “high-value” events on the heatmap.
-    const activityDataObj = matches.reduce((acc: any, match) => {
-      const d = new Date(match.created_at);
+    // Build the heatmap from real engagement events (every like/super_intro
+    // /pass directed *at* the user). Matches alone are too sparse to fill
+    // a 7×24 grid for most users; engagement events are denser and answer
+    // the more useful question: "when does my profile get attention?"
+    const activityDataObj = directedAtUser.reduce((acc: any, like) => {
+      const d = new Date(like.created_at);
       const day = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'][d.getDay()];
       const hour = d.getHours();
       const key = `${day}-${hour}`;
@@ -335,19 +340,34 @@ export default function Analytics() {
       weeklyData,
     };
 
-    // ---------------- Profile attributes (still heuristic / static) ----------------
-    const profileAttributes = [
-      { name: 'Profile Photo', successRate: 85, views: 450, matches: 38 },
-      { name: 'Prayer Habits', successRate: 78, views: 380, matches: 30 },
-      { name: 'Education', successRate: 72, views: 320, matches: 23 },
-      { name: 'Career', successRate: 68, views: 290, matches: 20 },
-      { name: 'Family Values', successRate: 65, views: 250, matches: 16 },
+    // ---------------- Profile completion (real, computed from auth profile) ----------------
+    const completionFields = [
+      { name: 'Profile photo', filled: !!userProfile?.profile_photo_url },
+      { name: 'Bio', filled: !!(userProfile?.bio && String(userProfile.bio).trim().length > 0) },
+      { name: 'Date of birth', filled: !!userProfile?.dob },
+      { name: 'City & state', filled: !!(userProfile?.city && userProfile?.state) },
+      { name: 'Occupation', filled: !!userProfile?.occupation },
+      { name: 'Education', filled: !!userProfile?.education },
+      { name: 'Denomination', filled: !!userProfile?.denomination },
+      { name: 'Practice level', filled: !!userProfile?.practice_level },
+      { name: 'Prayer frequency', filled: !!userProfile?.prayer_frequency },
+      { name: 'Marital status', filled: !!userProfile?.marital_status },
+      { name: 'Nikah timeline', filled: !!userProfile?.nikah_timeline },
     ];
+    const filledCount = completionFields.filter((f) => f.filled).length;
+    const completionPercentage = Math.round(
+      (filledCount / completionFields.length) * 100
+    );
+    const profileCompletion = {
+      fields: completionFields,
+      percentage: completionPercentage,
+    };
 
     const tips = generateTips(
       successRate,
       averageResponseTime,
       directedAtUser.length,
+      completionPercentage,
       navigateFn
     );
 
@@ -364,7 +384,7 @@ export default function Analytics() {
       },
       activityHeatmap,
       messageStats,
-      profileAttributes,
+      profileCompletion,
       tips,
     };
   };
@@ -392,11 +412,25 @@ export default function Analytics() {
     successRate: number,
     avgResponseTimeMinutes: number,
     viewCount: number,
+    completionPercentage: number,
     navigateFn: (path: string) => void
   ) => {
     const tips: any[] = [];
 
-    if (successRate < 30) {
+    if (completionPercentage < 80) {
+      tips.push({
+        id: 'completion',
+        category: 'profile_improvement',
+        text: `Your profile is ${completionPercentage}% complete. More complete profiles get noticeably more matches — fill in the missing sections to stand out.`,
+        priority: 3,
+        action: {
+          label: 'Complete Profile',
+          onClick: () => navigateFn('/profile'),
+        },
+      });
+    }
+
+    if (successRate < 30 && successRate > 0) {
       tips.push({
         id: '1',
         category: 'matching',
@@ -432,19 +466,14 @@ export default function Analytics() {
       });
     }
 
-    tips.push({
-      id: '4',
-      category: 'activity_timing',
-      text: 'Try being active during the evening hours – that’s when most users tend to like and match.',
-      priority: 1,
-    });
-
-    tips.push({
-      id: '5',
-      category: 'profile_improvement',
-      text: 'Profiles with 4+ photos typically get more matches. Consider adding a few more photos.',
-      priority: 2,
-    });
+    if (tips.length === 0) {
+      tips.push({
+        id: 'positive',
+        category: 'matching',
+        text: "Your profile is performing well — keep it up. Stay active and respond to new matches quickly to keep momentum.",
+        priority: 1,
+      });
+    }
 
     return tips;
   };
@@ -518,8 +547,9 @@ export default function Analytics() {
         <TabsContent value="matches" className="space-y-6">
           <div className="grid gap-6 md:grid-cols-2">
             <MatchSuccessRate {...analyticsData.matchStats} />
-            <ProfileAttributes
-              attributes={analyticsData.profileAttributes}
+            <ProfileCompletion
+              fields={analyticsData.profileCompletion.fields}
+              percentage={analyticsData.profileCompletion.percentage}
             />
           </div>
         </TabsContent>

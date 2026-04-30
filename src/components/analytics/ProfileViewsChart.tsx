@@ -19,14 +19,16 @@ export function ProfileViewsChart({ data, totalViews, weeklyGrowth }: ProfileVie
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Eye className="h-5 w-5" />
-          Profile Views
+          Profile Interest
         </CardTitle>
-        <CardDescription>Track who's viewing your profile over time</CardDescription>
+        <CardDescription>
+          People who took an action on your profile (liked, super-intro'd, or passed)
+        </CardDescription>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 gap-4 mb-6">
           <div className="space-y-1">
-            <p className="text-sm text-muted-foreground">Total Views</p>
+            <p className="text-sm text-muted-foreground">Total Interactions</p>
             <p className="text-2xl font-bold">{totalViews.toLocaleString()}</p>
           </div>
           <div className="space-y-1">
@@ -55,19 +57,19 @@ export function ProfileViewsChart({ data, totalViews, weeklyGrowth }: ProfileVie
                 border: '1px solid hsl(var(--border))'
               }}
             />
-            <Line 
-              type="monotone" 
-              dataKey="views" 
-              stroke="hsl(var(--primary))" 
+            <Line
+              type="monotone"
+              dataKey="views"
+              stroke="hsl(var(--primary))"
               strokeWidth={2}
-              name="Total Views"
+              name="Interactions"
             />
-            <Line 
-              type="monotone" 
-              dataKey="uniqueViewers" 
-              stroke="hsl(var(--muted-foreground))" 
+            <Line
+              type="monotone"
+              dataKey="uniqueViewers"
+              stroke="hsl(var(--muted-foreground))"
               strokeWidth={2}
-              name="Unique Viewers"
+              name="Unique People"
             />
           </LineChart>
         </ResponsiveContainer>
