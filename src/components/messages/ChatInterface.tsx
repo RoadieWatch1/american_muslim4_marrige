@@ -151,7 +151,8 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
       .from('messages')
       .update({ is_read: true })
       .eq('conversation_id', conversation.id)
-      .eq('receiver_id', user.id);
+      .eq('receiver_id', user.id)
+      .eq('is_read', false);
   };
 
   function isOfflineByLastSeen(lastSeenAt?: string | null) {

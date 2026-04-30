@@ -47,7 +47,7 @@ export default function Messages() {
         .channel(`messages-inbox:${user.id}`)
         .on(
           'postgres_changes',
-          { event: 'INSERT', schema: 'public', table: 'messages' },
+          { event: 'INSERT', schema: 'public', table: 'messages', filter: `receiver_id=eq.${user.id}` },
           (payload) => {
             const newMsg = payload.new as any;
             const convId = newMsg.conversation_id as string;
@@ -179,78 +179,98 @@ export default function Messages() {
         return;
       }
 
-      // 4) Build Conversation objects
-      const conversationsData: Conversation[] = await Promise.all(
-        allMatches.map(async (match: any) => {
-          const isDirectParticipant =
-            match.user1_id === user.id || match.user2_id === user.id;
+      // 4) Pre-compute other-user-id and direct-participant flag for every match
+      const matchIds: string[] = [];
+      const otherUserIdByMatch = new Map<string, string>();
+      const isDirectByMatch = new Map<string, boolean>();
 
-          let otherUserId: string;
+      for (const match of allMatches) {
+        const isDirect = match.user1_id === user.id || match.user2_id === user.id;
+        isDirectByMatch.set(match.id, isDirect);
+        matchIds.push(match.id);
 
-          if (isDirectParticipant) {
-            otherUserId =
-              match.user1_id === user.id ? match.user2_id : match.user1_id;
-          } else {
-            const wardIdInMatch =
-              wardIds.find(
-                (wid) => wid === match.user1_id || wid === match.user2_id
-              ) ?? match.user1_id;
+        let otherId: string;
+        if (isDirect) {
+          otherId = match.user1_id === user.id ? match.user2_id : match.user1_id;
+        } else {
+          const wardInMatch =
+            wardIds.find((w) => w === match.user1_id || w === match.user2_id) ??
+            match.user1_id;
+          otherId = match.user1_id === wardInMatch ? match.user2_id : match.user1_id;
+        }
+        otherUserIdByMatch.set(match.id, otherId);
+      }
 
-            otherUserId =
-              match.user1_id === wardIdInMatch ? match.user2_id : match.user1_id;
-          }
+      const otherUserIds = [...new Set(otherUserIdByMatch.values())];
 
-          // basic profile via RPC
-          const { data: profile, error: profileError } = await supabase
-            .rpc('get_profile_basic_for_message', { p_user_id: otherUserId })
-            .maybeSingle<BasicProfile>();
+      // 5) Three batched queries fired in parallel
+      const [profilesResult, unreadResult, lastMessagesResult] = await Promise.all([
+        // Batch A: all profiles in one round-trip (replaces per-match RPC)
+        supabase
+          .from('profiles')
+          .select('id, first_name, last_name')
+          .in('id', otherUserIds),
 
-          if (profileError) {
-            console.error(
-              'Error loading profile for conversation:',
-              profileError
-            );
-          }
+        // Batch B: all unread messages for this user across all convs
+        supabase
+          .from('messages')
+          .select('conversation_id')
+          .in('conversation_id', matchIds)
+          .eq('receiver_id', user.id)
+          .eq('is_read', false),
 
-          const displayFirstName =
-            profile?.first_name || profile?.last_name || 'Member';
+        // Batch C: last message per conversation (all parallel, 1 RTT)
+        Promise.all(
+          matchIds.map((id) =>
+            supabase
+              .from('messages')
+              .select('*')
+              .eq('conversation_id', id)
+              .order('created_at', { ascending: false })
+              .limit(1)
+              .maybeSingle()
+              .then((r) => ({ id, msg: r.data as Message | null }))
+          )
+        ),
+      ]);
 
-          const other_user = {
-            id: profile?.id || otherUserId,
-            firstName: displayFirstName,
-            lastName: profile?.last_name ?? null,
-            photos: [] as string[],
-          };
-
-          // last message
-          const { data: lastMessage } = await supabase
-            .from('messages')
-            .select('*')
-            .eq('conversation_id', match.id)
-            .order('created_at', { ascending: false })
-            .limit(1)
-            .maybeSingle();
-
-          // unread count (only for the actual logged-in user)
-          const { count } = await supabase
-            .from('messages')
-            .select('*', { count: 'exact', head: true })
-            .eq('conversation_id', match.id)
-            .eq('receiver_id', user.id)
-            .eq('is_read', false);
-
-          return {
-            id: match.id,
-            match_id: match.id,
-            other_user,
-            last_message: lastMessage || undefined,
-            unread_count: count || 0,
-            wali_can_view: !isDirectParticipant,
-          } as Conversation;
-        })
+      // Build lookup maps from batch results
+      const profileMap = new Map(
+        (profilesResult.data ?? []).map((p) => [p.id, p as BasicProfile])
       );
 
-      // 5) Sort by last message time
+      const unreadByConv = new Map<string, number>();
+      for (const row of unreadResult.data ?? []) {
+        const cid = (row as any).conversation_id as string;
+        unreadByConv.set(cid, (unreadByConv.get(cid) ?? 0) + 1);
+      }
+
+      const lastMessageByConv = new Map(
+        lastMessagesResult.map(({ id, msg }) => [id, msg])
+      );
+
+      // 6) Assemble Conversation objects — no more async needed
+      const conversationsData: Conversation[] = allMatches.map((match: any) => {
+        const otherId = otherUserIdByMatch.get(match.id)!;
+        const profile = profileMap.get(otherId);
+        const displayName = profile?.first_name || profile?.last_name || 'Member';
+
+        return {
+          id: match.id,
+          match_id: match.id,
+          other_user: {
+            id: profile?.id ?? otherId,
+            firstName: displayName,
+            lastName: profile?.last_name ?? null,
+            photos: [] as string[],
+          },
+          last_message: lastMessageByConv.get(match.id) ?? undefined,
+          unread_count: unreadByConv.get(match.id) ?? 0,
+          wali_can_view: !isDirectByMatch.get(match.id),
+        } as Conversation;
+      });
+
+      // 7) Sort by last message time
       conversationsData.sort((a, b) => {
         if (!a.last_message) return 1;
         if (!b.last_message) return -1;

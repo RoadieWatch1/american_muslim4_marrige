@@ -1,7 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { CheckCircle, ShieldCheck, Video, Image as ImageIcon } from "lucide-react";
+import { CheckCircle, ShieldCheck, Video, Image as ImageIcon, Heart } from "lucide-react";
 
 export type PublicProfile = {
   id: string;
@@ -80,6 +80,7 @@ export default function PublicProfileView({
   onPass,
 }: Props) {
   const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+  const [liked, setLiked] = useState(false);
 
   // Merge: RPC photo url + approved photos list (avoid duplicates)
   const mergedPhotos = useMemo(() => {
@@ -289,8 +290,16 @@ export default function PublicProfileView({
               </Button>
             )}
             {onLike && (
-              <Button variant="outline" onClick={onLike}>
-                Like
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setLiked(true);
+                  onLike();
+                }}
+                className={liked ? 'border-teal-500 text-teal-600 bg-teal-50' : ''}
+              >
+                <Heart className={`h-4 w-4 mr-1.5 ${liked ? 'fill-teal-500 text-teal-500' : ''}`} />
+                {liked ? 'Liked' : 'Like'}
               </Button>
             )}
             {onSendIntro && (

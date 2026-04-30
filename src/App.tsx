@@ -26,6 +26,7 @@ import Analytics from "./pages/Analytics";
 import Profile from "./pages/Profile";
 import AuthCallback from "./pages/AuthCallback";
 import IntroRequests from "./pages/IntroRequests";
+import WhoLikedMe from "./pages/WhoLikedMe";
 import WaliInvite from "./pages/WaliInvite";
 import SubscriptionUpgradePage from "./pages/SubscriptionUpgradePage";
 import BillingSuccessPage from "./pages/BillingSuccessPage";
@@ -91,6 +92,7 @@ const App = () => (
                       />
                       <Route path="/settings" element={<Settings />} />
                       <Route path="/analytics" element={<Analytics />} />
+                      <Route path="/who-liked-me" element={<WhoLikedMe />} />
 
                       {/* Admin area also behind ProtectedRoute + AdminRoute */}
                       <Route

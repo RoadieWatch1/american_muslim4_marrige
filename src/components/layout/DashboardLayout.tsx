@@ -12,6 +12,7 @@ export default function DashboardLayout() {
 
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [pendingIntroRequests, setPendingIntroRequests] = useState(0);
+  const [incomingLikes, setIncomingLikes] = useState(0);
 
   // Presence: keep profiles.last_seen_at fresh whenever the user is signed in
   // and inside the authenticated app, not just on /messages.
@@ -76,6 +77,18 @@ export default function DashboardLayout() {
       } else {
         setPendingIntroRequests(introCount ?? 0);
       }
+
+      const { count: likesCount, error: likesErr } = await supabase
+        .from("likes")
+        .select("id", { count: "exact", head: true })
+        .eq("to_user_id", user.id)
+        .eq("type", "like");
+
+      if (likesErr) {
+        console.error("Incoming likes count error:", likesErr);
+      } else {
+        setIncomingLikes(likesCount ?? 0);
+      }
     } catch (err) {
       console.error("Dashboard counts failed:", err);
     }
@@ -120,9 +133,26 @@ export default function DashboardLayout() {
       )
       .subscribe();
 
+    const likesChannel = supabase
+      .channel(`nav-counts-likes-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "INSERT",
+          schema: "public",
+          table: "likes",
+          filter: `to_user_id=eq.${user.id}`,
+        },
+        () => {
+          loadCounts();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(introChannel);
+      supabase.removeChannel(likesChannel);
     };
   }, [user, loadCounts]);
 
@@ -131,6 +161,7 @@ export default function DashboardLayout() {
       <DashboardNav
         unreadMessages={unreadMessages}
         pendingIntroRequests={pendingIntroRequests}
+        incomingLikes={incomingLikes}
       />
       <Outlet />
     </div>

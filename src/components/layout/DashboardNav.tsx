@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
 import {
   Bell,
+  Heart,
   MessageCircle,
   UserCheck,
   LayoutDashboard,
@@ -17,6 +18,7 @@ import {
 type BadgeProps = {
   unreadMessages?: number;
   pendingIntroRequests?: number;
+  incomingLikes?: number;
 };
 
 type PlanId = "free" | "silver" | "gold";
@@ -24,6 +26,7 @@ type PlanId = "free" | "silver" | "gold";
 export default function DashboardNav({
   unreadMessages = 0,
   pendingIntroRequests = 0,
+  incomingLikes = 0,
 }: BadgeProps) {
   const { signOut, profile } = useAuth();
   const navigate = useNavigate();
@@ -164,6 +167,12 @@ export default function DashboardNav({
               icon={UserCheck}
               badge={pendingIntroRequests}
             />
+            <NavBtn
+              to="/who-liked-me"
+              label="Likes"
+              icon={Heart}
+              badge={incomingLikes}
+            />
             <NavBtn to="/settings" label="Alerts" icon={Bell} />
           </div>
         </div>
@@ -212,6 +221,13 @@ export default function DashboardNav({
               label="Intro Requests"
               icon={UserCheck}
               badge={pendingIntroRequests}
+              fullWidth
+            />
+            <NavBtn
+              to="/who-liked-me"
+              label="Likes"
+              icon={Heart}
+              badge={incomingLikes}
               fullWidth
             />
             <NavBtn to="/settings" label="Alerts" icon={Bell} fullWidth />
