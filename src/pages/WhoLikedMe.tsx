@@ -24,6 +24,7 @@ export default function WhoLikedMe() {
   const [likers, setLikers] = useState<LikerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [likedBack, setLikedBack] = useState<Set<string>>(new Set());
+  const [pendingLike, setPendingLike] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -109,50 +110,62 @@ export default function WhoLikedMe() {
   };
 
   const handleLikeBack = async (targetUserId: string, targetName: string) => {
-    if (!user) return;
+    if (!user || pendingLike) return;
 
-    const { data: canLike, error: rpcErr } = await supabase.rpc('can_use_daily_like', {
-      p_profile_id: user.id,
-    });
+    setPendingLike(targetUserId);
+    try {
+      const { data: canLike, error: rpcErr } = await supabase.rpc('can_use_daily_like', {
+        p_profile_id: user.id,
+      });
 
-    if (rpcErr) {
-      toast.error('Could not check your daily like limit.');
-      return;
-    }
+      if (rpcErr) {
+        toast.error('Could not check your daily like limit.');
+        return;
+      }
 
-    if (!canLike) {
-      toast.error('You have reached your daily like limit.');
-      return;
-    }
+      if (!canLike) {
+        toast.error(
+          'You have used your daily like limit. Upgrade to Silver or Gold for unlimited likes.'
+        );
+        return;
+      }
 
-    const { error: likeErr } = await supabase.from('likes').upsert(
-      { from_user_id: user.id, to_user_id: targetUserId, type: 'like' },
-      { onConflict: 'from_user_id,to_user_id' }
-    );
-
-    if (likeErr) {
-      toast.error('Could not send like. Try again.');
-      return;
-    }
-
-    setLikedBack((prev) => new Set([...prev, targetUserId]));
-    toast.success(`You liked ${targetName} back!`);
-
-    const { data: mutual } = await supabase
-      .from('likes')
-      .select('id')
-      .eq('from_user_id', targetUserId)
-      .eq('to_user_id', user.id)
-      .eq('type', 'like')
-      .maybeSingle();
-
-    if (mutual) {
-      const [id1, id2] = [user.id, targetUserId].sort();
-      await supabase.from('matches').upsert(
-        { user1_id: id1, user2_id: id2 },
-        { onConflict: 'user1_id,user2_id' }
+      const { error: likeErr } = await supabase.from('likes').upsert(
+        { from_user_id: user.id, to_user_id: targetUserId, type: 'like' },
+        { onConflict: 'from_user_id,to_user_id' }
       );
-      toast.success(`🎉 It's a match with ${targetName}!`);
+
+      if (likeErr) {
+        toast.error('Could not send like. Try again.');
+        return;
+      }
+
+      setLikedBack((prev) => new Set([...prev, targetUserId]));
+      toast.success(`You liked ${targetName} back!`);
+
+      const { data: mutual } = await supabase
+        .from('likes')
+        .select('id')
+        .eq('from_user_id', targetUserId)
+        .eq('to_user_id', user.id)
+        .eq('type', 'like')
+        .maybeSingle();
+
+      if (mutual) {
+        const [id1, id2] = [user.id, targetUserId].sort();
+        const { error: matchErr } = await supabase.from('matches').upsert(
+          { user1_id: id1, user2_id: id2 },
+          { onConflict: 'user1_id,user2_id' }
+        );
+        if (matchErr) {
+          console.error('Match creation failed:', matchErr);
+          toast.error('Liked, but could not create match. Please try again.');
+        } else {
+          toast.success(`🎉 It's a match with ${targetName}!`);
+        }
+      }
+    } finally {
+      setPendingLike(null);
     }
   };
 
@@ -224,7 +237,7 @@ export default function WhoLikedMe() {
                 <Button
                   size="sm"
                   variant={likedBack.has(liker.userId) ? 'outline' : 'default'}
-                  disabled={likedBack.has(liker.userId)}
+                  disabled={likedBack.has(liker.userId) || pendingLike === liker.userId}
                   onClick={() => handleLikeBack(liker.userId, liker.firstName ?? 'them')}
                   className={likedBack.has(liker.userId) ? 'text-teal-600 border-teal-300' : ''}
                 >
@@ -233,7 +246,11 @@ export default function WhoLikedMe() {
                       likedBack.has(liker.userId) ? 'fill-teal-500 text-teal-500' : ''
                     }`}
                   />
-                  {likedBack.has(liker.userId) ? 'Liked' : 'Like Back'}
+                  {pendingLike === liker.userId
+                    ? 'Liking...'
+                    : likedBack.has(liker.userId)
+                    ? 'Liked'
+                    : 'Like Back'}
                 </Button>
               </div>
             ))}

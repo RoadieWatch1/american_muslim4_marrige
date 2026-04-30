@@ -1,25 +1,26 @@
 import React from 'react';
+import { Camera, Heart, MessageCircle, Users } from 'lucide-react';
 
 const guidelines = [
   {
     title: 'Modest Media',
     description: 'Up to 6 photos and 1 video (≤60s). All content reviewed for Islamic modesty standards.',
-    icon: '📸'
+    icon: Camera
   },
   {
     title: 'Marriage Intentions',
     description: 'All members confirm nikah intentions during signup. No casual dating allowed.',
-    icon: '💍'
+    icon: Heart
   },
   {
     title: 'Respectful Communication',
     description: 'Auto-moderation filters inappropriate language. Adab reminders in all chats.',
-    icon: '💬'
+    icon: MessageCircle
   },
   {
     title: 'Family Involvement',
     description: 'Optional wali approval system ensures family blessing and oversight.',
-    icon: '👨‍👩‍👧'
+    icon: Users
   }
 ];
 
@@ -35,15 +36,19 @@ export const IslamicGuidelines: React.FC = () => {
         </div>
         <div className="grid md:grid-cols-2 lg:grid-cols-4 gap-6">
           {guidelines.map((guideline, index) => (
-            <div 
+            <div
               key={index}
-              className="bg-white rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow duration-200"
+              className="bg-background border border-border/40 rounded-xl p-6 shadow-sm hover:shadow-md hover:border-amber-300/40 transition-all duration-300"
             >
-              <div className="text-5xl mb-4 text-center">{guideline.icon}</div>
-              <h3 className="text-lg font-semibold text-gray-900 mb-2 text-center">
+              <div className="flex justify-center mb-4">
+                <div className="w-12 h-12 rounded-xl bg-amber-50 border border-amber-200 flex items-center justify-center">
+                  <guideline.icon className="w-6 h-6 text-amber-600" />
+                </div>
+              </div>
+              <h3 className="text-lg font-semibold text-foreground mb-2 text-center">
                 {guideline.title}
               </h3>
-              <p className="text-gray-600 text-sm text-center">
+              <p className="text-foreground/60 text-sm text-center">
                 {guideline.description}
               </p>
             </div>

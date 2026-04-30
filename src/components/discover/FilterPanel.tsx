@@ -209,6 +209,7 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
                 <SelectItem value="any">Any</SelectItem>
                 <SelectItem value="sunni">Sunni</SelectItem>
                 <SelectItem value="shia">Shia</SelectItem>
+                <SelectItem value="ibadi">Ibadi</SelectItem>
                 <SelectItem value="quranic">Quranic Muslim</SelectItem>
               </SelectContent>
             </Select>
@@ -337,11 +338,27 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
                           </SelectTrigger>
                           <SelectContent>
                             <SelectItem value="any">Any</SelectItem>
+                            {/* Traditional Sunni schools */}
                             <SelectItem value="hanafi">Hanafi</SelectItem>
                             <SelectItem value="maliki">Maliki</SelectItem>
                             <SelectItem value="shafi">Shafi&apos;i</SelectItem>
                             <SelectItem value="hanbali">Hanbali</SelectItem>
-                            <SelectItem value="no_specific">No specific madhab</SelectItem>
+                            {/* Sunni movements */}
+                            <SelectItem value="salafi">Salafi / Wahhabi</SelectItem>
+                            <SelectItem value="deobandi">Deobandi</SelectItem>
+                            <SelectItem value="barelvi">Barelvi</SelectItem>
+                            {/* Sufi orders */}
+                            <SelectItem value="sufi_qadiri">Sufi – Qadiri</SelectItem>
+                            <SelectItem value="sufi_naqshbandi">Sufi – Naqshbandi</SelectItem>
+                            <SelectItem value="sufi_other">Sufi – Other Order</SelectItem>
+                            {/* Shia schools */}
+                            <SelectItem value="twelver">Twelver (Shia)</SelectItem>
+                            <SelectItem value="ismaili">Ismaili (Shia)</SelectItem>
+                            <SelectItem value="zaydi">Zaydi (Shia)</SelectItem>
+                            {/* Ibadi */}
+                            <SelectItem value="ibadi">Ibadi</SelectItem>
+                            {/* General */}
+                            <SelectItem value="no_specific">No specific school</SelectItem>
                             <SelectItem value="prefer_not">Prefer not to say</SelectItem>
                           </SelectContent>
                         </Select>

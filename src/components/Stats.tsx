@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabase";
 
 type LandingStats = {
@@ -13,6 +13,24 @@ function formatCount(n: number) {
   if (n >= 10_000) return `${Math.round(n / 1000)}K+`;
   if (n >= 1_000) return `${(n / 1_000).toFixed(1)}K+`;
   return n.toLocaleString();
+}
+
+function useCountUp(target: number | null, duration = 1500): number {
+  const [display, setDisplay] = React.useState(0);
+  const rafRef = React.useRef<number | null>(null);
+  React.useEffect(() => {
+    if (!target) { setDisplay(0); return; }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const p = Math.min((now - start) / duration, 1);
+      const eased = 1 - Math.pow(1 - p, 3);
+      setDisplay(Math.round(eased * target));
+      if (p < 1) rafRef.current = requestAnimationFrame(tick);
+    };
+    rafRef.current = requestAnimationFrame(tick);
+    return () => { if (rafRef.current) cancelAnimationFrame(rafRef.current); };
+  }, [target, duration]);
+  return display;
 }
 
 export const Stats: React.FC = () => {
@@ -36,7 +54,6 @@ export const Stats: React.FC = () => {
           return;
         }
 
-        // data is JSON
         const s = (data ?? {}) as Partial<LandingStats>;
 
         if (!cancelled) {
@@ -59,38 +76,30 @@ export const Stats: React.FC = () => {
     };
   }, []);
 
-  const cards = useMemo(
-    () => [
-      {
-        number: loading ? "—" : formatCount(stats.active_members),
-        label: "Active Members",
-      },
-      {
-        number: loading ? "—" : formatCount(stats.successful_marriages),
-        label: "Successful Marriages",
-      },
-      {
-        number: loading ? "—" : formatCount(stats.verified_profiles),
-        label: "Verified Profiles",
-      },
-      {
-        number: "24/7",
-        label: "Moderation Support",
-      },
-    ],
-    [loading, stats]
-  );
+  const countMembers = useCountUp(loading ? null : stats.active_members);
+  const countMarriages = useCountUp(loading ? null : stats.successful_marriages);
+  const countProfiles = useCountUp(loading ? null : stats.verified_profiles);
+
+  const cards = [
+    { value: loading ? "—" : formatCount(countMembers), label: "Active Members" },
+    { value: loading ? "—" : formatCount(countMarriages), label: "Successful Marriages" },
+    { value: loading ? "—" : formatCount(countProfiles), label: "Verified Profiles" },
+    { value: "24/7", label: "Moderation Support" },
+  ];
 
   return (
-    <section className="py-16 bg-gradient-to-r from-teal-600 to-teal-700">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-8">
+    <section className="relative py-16 bg-slate-900 overflow-hidden">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[200px] bg-teal-500/10 rounded-full blur-3xl" />
+      </div>
+      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-white/10">
           {cards.map((stat, index) => (
-            <div key={index} className="text-center">
-              <div className="text-4xl md:text-5xl font-bold text-white mb-2">
-                {stat.number}
+            <div key={index} className="text-center px-8 py-4">
+              <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 tabular-nums">
+                {stat.value}
               </div>
-              <div className="text-teal-100 text-sm md:text-base">
+              <div className="text-slate-400 text-xs uppercase tracking-wide">
                 {stat.label}
               </div>
             </div>
@@ -100,4 +109,3 @@ export const Stats: React.FC = () => {
     </section>
   );
 };
-

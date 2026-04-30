@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import { Star } from 'lucide-react';
 
 type SuccessStoryRow = {
   id: string;
@@ -8,7 +9,6 @@ type SuccessStoryRow = {
   story: string | null;
   published: boolean;
 
-  // new columns you added
   couple_name: string | null;
   location: string | null;
   image_url: string | null;
@@ -27,35 +27,7 @@ type UiTestimonial = {
   rating: number;
 };
 
-const FALLBACK_TESTIMONIALS: UiTestimonial[] = [
-  // {
-  //   key: 'fallback-1',
-  //   name: 'Fatima & Ahmed',
-  //   location: 'New York, NY',
-  //   text: 'We found each other through AM4M and got married 6 months later. The wali feature gave my family peace of mind throughout the process.',
-  //   image:
-  //     'https://d64gsuwffb70l.cloudfront.net/68efeec24861a2554564bed1_1760554748703_7b9c3fd6.webp',
-  //   rating: 5,
-  // },
-  // {
-  //   key: 'fallback-2',
-  //   name: 'Sarah & Omar',
-  //   location: 'Los Angeles, CA',
-  //   text: 'Finally, a platform that respects Islamic values! The chaperoned chat feature helped us get to know each other while maintaining adab.',
-  //   image:
-  //     'https://d64gsuwffb70l.cloudfront.net/68efeec24861a2554564bed1_1760554750476_f2180b40.webp',
-  //   rating: 5,
-  // },
-  // {
-  //   key: 'fallback-3',
-  //   name: 'Zainab & Yusuf',
-  //   location: 'Chicago, IL',
-  //   text: 'The verification process made us feel safe. We appreciated that everyone here has serious marriage intentions. Alhamdulillah!',
-  //   image:
-  //     'https://d64gsuwffb70l.cloudfront.net/68efeec24861a2554564bed1_1760554752197_e2e689b8.webp',
-  //   rating: 5,
-  // },
-];
+const FALLBACK_TESTIMONIALS: UiTestimonial[] = [];
 
 function clampRating(n: any) {
   const v = Number(n);
@@ -121,12 +93,14 @@ export const Testimonials: React.FC = () => {
     };
   }, []);
 
+  if (!loading && items.length === 0) return null;
+
   return (
-    <section className="py-20 bg-white">
+    <section className="py-20 bg-background">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900">Success Stories</h2>
-          <p className="mt-4 text-xl text-gray-600">Real couples, real marriages</p>
+          <h2 className="text-4xl font-bold text-foreground">Success Stories</h2>
+          <p className="mt-4 text-xl text-foreground/60">Real couples, real marriages</p>
         </div>
 
         {loading && (
@@ -134,16 +108,16 @@ export const Testimonials: React.FC = () => {
             {[0, 1, 2].map((i) => (
               <div
                 key={i}
-                className="bg-gradient-to-br from-teal-50 to-white rounded-2xl p-6 shadow-lg"
+                className="relative rounded-2xl p-6 bg-background border border-border/60 shadow-sm"
               >
                 <div className="flex items-center gap-4 mb-4">
-                  <div className="w-16 h-16 rounded-full bg-gray-200 animate-pulse" />
+                  <div className="w-16 h-16 rounded-full bg-muted animate-pulse" />
                   <div className="flex-1">
-                    <div className="h-4 w-40 bg-gray-200 rounded animate-pulse mb-2" />
-                    <div className="h-3 w-28 bg-gray-200 rounded animate-pulse" />
+                    <div className="h-4 w-40 bg-muted rounded animate-pulse mb-2" />
+                    <div className="h-3 w-28 bg-muted rounded animate-pulse" />
                   </div>
                 </div>
-                <div className="h-16 bg-gray-200 rounded animate-pulse" />
+                <div className="h-16 bg-muted rounded animate-pulse" />
               </div>
             ))}
           </div>
@@ -153,8 +127,9 @@ export const Testimonials: React.FC = () => {
           {items.map((t) => (
             <div
               key={t.key}
-              className="bg-gradient-to-br from-teal-50 to-white rounded-2xl p-6 shadow-lg"
+              className="relative rounded-2xl p-6 bg-background border border-border/60 shadow-sm hover:shadow-md hover:border-teal-300/50 transition-all duration-300"
             >
+              <div className="absolute top-0 left-6 right-6 h-px bg-gradient-to-r from-transparent via-teal-400/50 to-transparent rounded-full" />
               <div className="flex items-center gap-4 mb-4">
                 <img
                   src={t.image}
@@ -163,17 +138,22 @@ export const Testimonials: React.FC = () => {
                   loading="lazy"
                 />
                 <div>
-                  <h4 className="font-semibold text-gray-900">{t.name}</h4>
+                  <h4 className="font-semibold text-foreground">{t.name}</h4>
                   {t.location ? (
-                    <p className="text-sm text-gray-600">{t.location}</p>
+                    <p className="text-sm text-foreground/60">{t.location}</p>
                   ) : null}
                 </div>
               </div>
 
-              <p className="text-gray-700 italic">"{t.text}"</p>
+              <p className="text-foreground/80 italic leading-relaxed">"{t.text}"</p>
 
-              <div className="mt-4 flex gap-1 text-amber-500">
-                {'★'.repeat(t.rating)}
+              <div className="mt-4 flex gap-0.5">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <Star
+                    key={i}
+                    className={`w-4 h-4 ${i < t.rating ? 'text-amber-400 fill-amber-400' : 'text-slate-300 fill-slate-300'}`}
+                  />
+                ))}
               </div>
             </div>
           ))}

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { ChevronDown } from 'lucide-react';
 
 const faqs = [
   {
@@ -31,24 +32,28 @@ export const FAQ: React.FC = () => {
   const [openIndex, setOpenIndex] = useState<number | null>(null);
 
   return (
-    <section className="py-20 bg-gradient-to-br from-gray-50 to-teal-50">
+    <section className="py-20 bg-gradient-to-br from-slate-50/80 to-teal-50/40" id="faq">
       <div className="max-w-4xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="text-center mb-16">
-          <h2 className="text-4xl font-bold text-gray-900">Frequently Asked Questions</h2>
-          <p className="mt-4 text-xl text-gray-600">Everything you need to know</p>
+          <h2 className="text-4xl font-bold text-foreground">Frequently Asked Questions</h2>
+          <p className="mt-4 text-xl text-foreground/60">Everything you need to know</p>
         </div>
         <div className="space-y-4">
           {faqs.map((faq, index) => (
-            <div key={index} className="bg-white rounded-xl shadow-md overflow-hidden">
+            <div key={index} className="bg-background border border-border/50 rounded-xl overflow-hidden hover:border-teal-300/40 transition-colors duration-200">
               <button
                 onClick={() => setOpenIndex(openIndex === index ? null : index)}
-                className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-gray-50 transition-colors"
+                className="w-full px-6 py-4 text-left flex justify-between items-center hover:bg-muted/50 transition-colors"
               >
-                <span className="font-semibold text-gray-900">{faq.question}</span>
-                <span className="text-teal-600 text-2xl">{openIndex === index ? '−' : '+'}</span>
+                <span className="font-semibold text-foreground">{faq.question}</span>
+                <ChevronDown
+                  className={`w-5 h-5 text-teal-600 transition-transform duration-200 flex-shrink-0 ${
+                    openIndex === index ? 'rotate-180' : ''
+                  }`}
+                />
               </button>
               {openIndex === index && (
-                <div className="px-6 pb-4 text-gray-600">
+                <div className="px-6 pb-4 text-foreground/70">
                   {faq.answer}
                 </div>
               )}

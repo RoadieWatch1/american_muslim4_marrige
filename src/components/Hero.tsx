@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Button } from './ui/Button';
 import { AuthModal } from './auth/AuthModal';
+import { CheckCircle } from 'lucide-react';
 
 export const Hero: React.FC = () => {
   const [showAuthModal, setShowAuthModal] = useState(false);
@@ -38,12 +39,14 @@ export const Hero: React.FC = () => {
         {/* CONTENT */}
         <div className="relative z-10 flex min-h-screen items-center">
           <div className="w-full max-w-7xl mx-auto px-6 py-28">
-            <div className="max-w-3xl">
+            <div className="max-w-3xl animate-fade-in">
 
               <h1 className="text-5xl md:text-6xl font-bold text-foreground leading-tight tracking-wide">
                 Your Intentions.
                 <br />
-                <span className="text-primary">Our Structure.</span>
+                <span className="bg-gradient-to-r from-teal-400 via-emerald-400 to-teal-300 bg-clip-text text-transparent">
+                  Our Structure.
+                </span>
               </h1>
 
              <p className="mt-6 text-xl text-foreground/90 leading-relaxed">
@@ -52,28 +55,34 @@ export const Hero: React.FC = () => {
               </p>
 
               <div className="mt-10 flex flex-wrap gap-4">
-                <Button size="lg" onClick={() => setShowAuthModal(true)}>
+                <Button
+                  size="lg"
+                  onClick={() => setShowAuthModal(true)}
+                  className="bg-gradient-to-r from-teal-600 to-emerald-500 text-white border-0 hover:from-teal-500 hover:to-emerald-400 shadow-lg shadow-teal-500/30 font-semibold px-8"
+                >
                   Get Started Free
                 </Button>
 
-                <Button variant="outline" size="lg" onClick={scrollToDiscover}>
+                <Button
+                  variant="outline"
+                  size="lg"
+                  onClick={scrollToDiscover}
+                  className="border-white/30 bg-white/10 backdrop-blur-sm text-foreground hover:bg-white/20 font-semibold px-8"
+                >
                   Learn More
                 </Button>
               </div>
 
-              <div className="mt-10 flex flex-wrap gap-6 text-sm text-foreground/80">
-                <span className="flex items-center gap-2">
-                  <span className="text-primary text-xl">✓</span>
-                  Verified Profiles
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-primary text-xl">✓</span>
-                  Wali Involvement
-                </span>
-                <span className="flex items-center gap-2">
-                  <span className="text-primary text-xl">✓</span>
-                  100% Halal
-                </span>
+              <div className="mt-10 flex flex-wrap gap-3">
+                {['Verified Profiles', 'Wali Involvement', '100% Halal'].map((label) => (
+                  <span
+                    key={label}
+                    className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 px-3 py-1 text-sm text-foreground/90"
+                  >
+                    <CheckCircle className="w-3.5 h-3.5 text-teal-400 flex-shrink-0" />
+                    {label}
+                  </span>
+                ))}
               </div>
 
             </div>
