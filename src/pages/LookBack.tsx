@@ -50,38 +50,16 @@ export default function LookBack() {
 
       const userIds = passes.map((p) => p.to_user_id);
 
-      const [profilesResult, mediaResult] = await Promise.all([
-        supabase
-          .from('profiles')
-          .select('id, first_name, city, state, dob, profile_photo_id')
-          .in('id', userIds),
-        supabase
-          .from('media')
-          .select('id, url')
-          .in(
-            'id',
-            // we'll filter after getting profiles — placeholder fetch
-            userIds // will be refined below
-          ),
-      ]);
+      const { data: profiles, error: profilesErr } = await supabase.rpc(
+        'get_basic_profiles',
+        { p_user_ids: userIds }
+      );
 
-      if (profilesResult.error) throw profilesResult.error;
+      if (profilesErr) throw profilesErr;
 
-      const profiles = profilesResult.data ?? [];
-      const photoIds = profiles.map((p) => p.profile_photo_id).filter(Boolean);
-
-      const photoMap: Record<string, string> = {};
-      if (photoIds.length > 0) {
-        const { data: media } = await supabase
-          .from('media')
-          .select('id, url')
-          .in('id', photoIds);
-        for (const m of media ?? []) {
-          photoMap[m.id] = m.url;
-        }
-      }
-
-      const profileMap = Object.fromEntries(profiles.map((p) => [p.id, p]));
+      const profileMap = Object.fromEntries(
+        (profiles ?? []).map((p: any) => [p.id, p])
+      );
       const now = new Date();
 
       const merged: PassedProfile[] = passes.map((pass) => {
@@ -100,7 +78,7 @@ export default function LookBack() {
           city: p?.city ?? null,
           state: p?.state ?? null,
           age,
-          photoUrl: p?.profile_photo_id ? (photoMap[p.profile_photo_id] ?? null) : null,
+          photoUrl: p?.profile_photo_url ?? null,
         };
       });
 

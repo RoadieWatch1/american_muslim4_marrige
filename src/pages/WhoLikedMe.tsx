@@ -52,26 +52,16 @@ export default function WhoLikedMe() {
 
       const userIds = likes.map((l) => l.from_user_id);
 
-      const { data: profiles, error: profilesErr } = await supabase
-        .from('profiles')
-        .select('id, first_name, city, state, dob, profile_photo_id')
-        .in('id', userIds);
+      const { data: profiles, error: profilesErr } = await supabase.rpc(
+        'get_basic_profiles',
+        { p_user_ids: userIds }
+      );
 
       if (profilesErr) throw profilesErr;
 
-      const photoIds = (profiles ?? []).map((p) => p.profile_photo_id).filter(Boolean);
-      const photoMap: Record<string, string> = {};
-      if (photoIds.length > 0) {
-        const { data: media } = await supabase
-          .from('media')
-          .select('id, url')
-          .in('id', photoIds);
-        for (const m of media ?? []) {
-          photoMap[m.id] = m.url;
-        }
-      }
-
-      const profileMap = Object.fromEntries((profiles ?? []).map((p) => [p.id, p]));
+      const profileMap = Object.fromEntries(
+        (profiles ?? []).map((p: any) => [p.id, p])
+      );
       const now = new Date();
 
       const merged: LikerProfile[] = likes.map((like) => {
@@ -87,7 +77,7 @@ export default function WhoLikedMe() {
           city: p?.city ?? null,
           state: p?.state ?? null,
           age,
-          photoUrl: p?.profile_photo_id ? (photoMap[p.profile_photo_id] ?? null) : null,
+          photoUrl: p?.profile_photo_url ?? null,
         };
       });
 
