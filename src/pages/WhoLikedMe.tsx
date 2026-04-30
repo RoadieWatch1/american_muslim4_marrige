@@ -136,7 +136,8 @@ export default function WhoLikedMe() {
       );
 
       if (likeErr) {
-        toast.error('Could not send like. Try again.');
+        console.error('Like upsert failed:', likeErr);
+        toast.error(`Could not send like: ${likeErr.message}`);
         return;
       }
 

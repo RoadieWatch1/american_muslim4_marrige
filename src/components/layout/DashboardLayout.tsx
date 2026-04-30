@@ -23,9 +23,7 @@ export default function DashboardLayout() {
 
     const ping = async () => {
       try {
-        const { error } = await supabase.functions.invoke('touch_last_seen', {
-          body: {},
-        });
+        const { error } = await supabase.rpc('touch_last_seen');
         if (error) console.warn('touch_last_seen error:', error);
       } catch (e) {
         console.warn('touch_last_seen failed:', e);
