@@ -75,9 +75,12 @@ export function MatchSuccessRate({
           <div className="space-y-2">
             <div className="flex items-center gap-2">
               <X className="h-4 w-4 text-red-500" />
-              <span className="text-sm text-muted-foreground">Rejections</span>
+              <span className="text-sm text-muted-foreground">Not Reciprocated</span>
             </div>
             <p className="text-2xl font-bold text-red-500">{rejections}</p>
+            <p className="text-xs text-muted-foreground">
+              People you liked who passed on you
+            </p>
           </div>
         </div>
       </CardContent>

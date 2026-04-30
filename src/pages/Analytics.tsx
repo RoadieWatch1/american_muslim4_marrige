@@ -217,8 +217,18 @@ export default function Analytics() {
 
     const matchesCreated = matches.length;
 
+    // Real rejections: of the people I liked, how many passed on me back.
+    // The previous formula counted passes I sent, which is the opposite.
+    const peopleILikedSet = new Set(
+      likes
+        .filter((l) => l.from_user_id === userId && l.type !== 'pass')
+        .map((l) => l.to_user_id)
+    );
     const rejections = likes.filter(
-      (l) => l.from_user_id === userId && l.type === 'pass'
+      (l) =>
+        l.to_user_id === userId &&
+        l.type === 'pass' &&
+        peopleILikedSet.has(l.from_user_id)
     ).length;
 
     const successRate =
