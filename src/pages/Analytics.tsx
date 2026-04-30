@@ -54,7 +54,7 @@ type MessageRow = {
 export default function Analytics() {
   const { user, profile } = useAuth();
   const navigate = useNavigate();
-  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('week');
+  const [timeRange, setTimeRange] = useState<'week' | 'month' | 'all'>('all');
   const [loading, setLoading] = useState(true);
   const [analyticsData, setAnalyticsData] = useState<any>({
     profileViews: [],
