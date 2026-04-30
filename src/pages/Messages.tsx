@@ -282,8 +282,17 @@ export default function Messages() {
 
       setConversations(conversationsData);
 
-      if (!selectedConversation && conversationsData.length > 0) {
-        setSelectedConversation(conversationsData[0]);
+      // Auto-select the most recent conversation on desktop only.
+      // On mobile, leave the list visible so users can pick who to talk to,
+      // especially when they have multiple new matches.
+      const isDesktop =
+        typeof window !== 'undefined' && window.matchMedia('(min-width: 768px)').matches;
+
+      if (isDesktop && !selectedConversation && conversationsData.length > 0) {
+        // Prefer the latest conversation that already has messages over a
+        // brand-new match — opening an empty chat is jarring on first load.
+        const firstWithMessages = conversationsData.find((c) => c.last_message);
+        setSelectedConversation(firstWithMessages ?? conversationsData[0]);
       }
     } catch (err) {
       console.error('Error loading conversations:', err);
