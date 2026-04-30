@@ -10,7 +10,10 @@ import { MessageSquare } from 'lucide-react';
 type BasicProfile = {
   id: string;
   first_name: string | null;
-  last_name: string | null;
+  city: string | null;
+  state: string | null;
+  dob: string | null;
+  profile_photo_url: string | null;
 };
 
 type WaliLink = {
@@ -205,11 +208,9 @@ export default function Messages() {
 
       // 5) Three batched queries fired in parallel
       const [profilesResult, unreadResult, lastMessagesResult] = await Promise.all([
-        // Batch A: all profiles in one round-trip (replaces per-match RPC)
-        supabase
-          .from('profiles')
-          .select('id, first_name, last_name')
-          .in('id', otherUserIds),
+        // Batch A: all profiles + photo URL via SECURITY DEFINER RPC
+        // (direct queries on `media` are blocked by RLS for non-owners)
+        supabase.rpc('get_basic_profiles', { p_user_ids: otherUserIds }),
 
         // Batch B: all unread messages for this user across all convs
         supabase
@@ -253,7 +254,7 @@ export default function Messages() {
       const conversationsData: Conversation[] = allMatches.map((match: any) => {
         const otherId = otherUserIdByMatch.get(match.id)!;
         const profile = profileMap.get(otherId);
-        const displayName = profile?.first_name || profile?.last_name || 'Member';
+        const displayName = profile?.first_name || 'Member';
 
         return {
           id: match.id,
@@ -261,8 +262,8 @@ export default function Messages() {
           other_user: {
             id: profile?.id ?? otherId,
             firstName: displayName,
-            lastName: profile?.last_name ?? null,
-            photos: [] as string[],
+            lastName: null,
+            photos: profile?.profile_photo_url ? [profile.profile_photo_url] : [],
           },
           last_message: lastMessageByConv.get(match.id) ?? undefined,
           unread_count: unreadByConv.get(match.id) ?? 0,
