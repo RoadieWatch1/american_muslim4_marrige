@@ -67,6 +67,42 @@ export default function Discover() {
     minAge: 22,
     maxAge: 35,
   });
+  // Track whether the saved filters from localStorage have been hydrated.
+  // Until this flips true we skip both fetchProfiles and the persist effect
+  // so the default values don't blow away what the user saved last session.
+  const [filtersHydrated, setFiltersHydrated] = useState(false);
+
+  // Load saved filters once we know which user we're loading for.
+  useEffect(() => {
+    if (!user?.id || filtersHydrated) return;
+    try {
+      const saved = localStorage.getItem(`discover-filters:${user.id}`);
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed && typeof parsed === 'object') {
+          setFilters(parsed);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load saved filters:', e);
+    }
+    setFiltersHydrated(true);
+  }, [user?.id, filtersHydrated]);
+
+  // Persist filter changes for this user, but only after hydration —
+  // otherwise the first render would overwrite saved settings with the
+  // hard-coded defaults.
+  useEffect(() => {
+    if (!user?.id || !filtersHydrated) return;
+    try {
+      localStorage.setItem(
+        `discover-filters:${user.id}`,
+        JSON.stringify(filters)
+      );
+    } catch (e) {
+      console.warn('Failed to save filters:', e);
+    }
+  }, [user?.id, filters, filtersHydrated]);
 
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<DiscoverProfileRow | null>(null);
@@ -86,9 +122,13 @@ export default function Discover() {
       navigate('/');
       return;
     }
+    // Wait until saved filters are hydrated from localStorage so we
+    // don't fetch with default filters first, then refetch with saved
+    // filters a tick later.
+    if (!filtersHydrated) return;
     fetchProfiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, profile, filters]);
+  }, [user, profile, filters, filtersHydrated]);
 
   const fetchProfiles = async () => {
     if (!user) return;
