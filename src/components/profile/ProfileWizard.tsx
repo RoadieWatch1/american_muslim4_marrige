@@ -279,12 +279,13 @@ const buildProfilePayload = (merged: any) => {
           <IslamicPreferences
             initialData={profileData}
             onBack={goBack}
-            onSubmit={(data) => {
-              saveStep(data);
+            onSubmit={async (data) => {
+              await saveStep(data);
               toast({
                 title: 'All steps completed!',
                 description: 'Your profile has been updated.',
               });
+              navigate('/dashboard');
             }}
           />
         )}
