@@ -2,7 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
-import { Heart, ArrowLeft } from 'lucide-react';
+import { Heart, ArrowLeft, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
@@ -24,7 +24,9 @@ export default function WhoLikedMe() {
   const [likers, setLikers] = useState<LikerProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [likedBack, setLikedBack] = useState<Set<string>>(new Set());
+  const [passed, setPassed] = useState<Set<string>>(new Set());
   const [pendingLike, setPendingLike] = useState<string | null>(null);
+  const [pendingPass, setPendingPass] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -170,6 +172,34 @@ export default function WhoLikedMe() {
     }
   };
 
+  const handlePass = async (targetUserId: string) => {
+    if (!user || pendingPass) return;
+
+    setPendingPass(targetUserId);
+    try {
+      const { error: passErr } = await supabase.from('likes').upsert(
+        { from_user_id: user.id, to_user_id: targetUserId, type: 'pass' },
+        { onConflict: 'from_user_id,to_user_id' }
+      );
+
+      if (passErr) {
+        console.error('Pass upsert failed:', passErr);
+        toast.error(`Could not pass: ${passErr.message}`);
+        return;
+      }
+
+      setPassed((prev) => new Set([...prev, targetUserId]));
+    } finally {
+      setPendingPass(null);
+    }
+  };
+
+  // Hide rows the user has already responded to so the list mirrors the
+  // unread badge count.
+  const visibleLikers = likers.filter(
+    (l) => !passed.has(l.userId) && !likedBack.has(l.userId)
+  );
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-emerald-50 to-teal-50 p-4">
       <div className="max-w-2xl mx-auto">
@@ -178,9 +208,9 @@ export default function WhoLikedMe() {
             <ArrowLeft className="h-5 w-5" />
           </Button>
           <h1 className="text-2xl font-bold text-gray-900">Who Liked Me</h1>
-          {likers.length > 0 && (
+          {visibleLikers.length > 0 && (
             <span className="ml-auto text-sm text-gray-500">
-              {likers.length} like{likers.length !== 1 ? 's' : ''}
+              {visibleLikers.length} new
             </span>
           )}
         </div>
@@ -189,17 +219,21 @@ export default function WhoLikedMe() {
           <div className="flex justify-center py-20">
             <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-600" />
           </div>
-        ) : likers.length === 0 ? (
+        ) : visibleLikers.length === 0 ? (
           <div className="text-center py-20">
             <Heart className="h-12 w-12 text-gray-300 mx-auto mb-4" />
-            <h2 className="text-xl font-semibold text-gray-700 mb-1">No likes yet</h2>
+            <h2 className="text-xl font-semibold text-gray-700 mb-1">
+              {likers.length === 0 ? 'No likes yet' : 'All caught up!'}
+            </h2>
             <p className="text-gray-500">
-              When someone likes your profile, they'll appear here.
+              {likers.length === 0
+                ? "When someone likes your profile, they'll appear here."
+                : "You've responded to everyone who liked you."}
             </p>
           </div>
         ) : (
           <div className="space-y-3">
-            {likers.map((liker) => (
+            {visibleLikers.map((liker) => (
               <div
                 key={liker.likeId}
                 className="bg-white rounded-2xl shadow-sm border p-4 flex items-center gap-4"
@@ -236,9 +270,20 @@ export default function WhoLikedMe() {
                 </div>
 
                 <Button
+                  size="icon"
+                  variant="outline"
+                  disabled={pendingPass === liker.userId || pendingLike === liker.userId}
+                  onClick={() => handlePass(liker.userId)}
+                  title="Pass"
+                  className="text-gray-500 hover:text-red-600 hover:border-red-300"
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+
+                <Button
                   size="sm"
                   variant={likedBack.has(liker.userId) ? 'outline' : 'default'}
-                  disabled={likedBack.has(liker.userId) || pendingLike === liker.userId}
+                  disabled={likedBack.has(liker.userId) || pendingLike === liker.userId || pendingPass === liker.userId}
                   onClick={() => handleLikeBack(liker.userId, liker.firstName ?? 'them')}
                   className={likedBack.has(liker.userId) ? 'text-teal-600 border-teal-300' : ''}
                 >

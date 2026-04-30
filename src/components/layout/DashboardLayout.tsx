@@ -76,16 +76,14 @@ export default function DashboardLayout() {
         setPendingIntroRequests(introCount ?? 0);
       }
 
-      const { count: likesCount, error: likesErr } = await supabase
-        .from("likes")
-        .select("id", { count: "exact", head: true })
-        .eq("to_user_id", user.id)
-        .eq("type", "like");
+      const { data: unreadLikes, error: likesErr } = await supabase.rpc(
+        "unread_incoming_likes_count"
+      );
 
       if (likesErr) {
         console.error("Incoming likes count error:", likesErr);
       } else {
-        setIncomingLikes(likesCount ?? 0);
+        setIncomingLikes(Number(unreadLikes ?? 0));
       }
     } catch (err) {
       console.error("Dashboard counts failed:", err);
@@ -131,12 +129,12 @@ export default function DashboardLayout() {
       )
       .subscribe();
 
-    const likesChannel = supabase
-      .channel(`nav-counts-likes-${user.id}`)
+    const likesIncomingChannel = supabase
+      .channel(`nav-counts-likes-incoming-${user.id}`)
       .on(
         "postgres_changes",
         {
-          event: "INSERT",
+          event: "*",
           schema: "public",
           table: "likes",
           filter: `to_user_id=eq.${user.id}`,
@@ -147,10 +145,29 @@ export default function DashboardLayout() {
       )
       .subscribe();
 
+    // Outgoing actions (like-back, pass) also affect the unread badge
+    // because the RPC excludes likers the user has already responded to.
+    const likesOutgoingChannel = supabase
+      .channel(`nav-counts-likes-outgoing-${user.id}`)
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "likes",
+          filter: `from_user_id=eq.${user.id}`,
+        },
+        () => {
+          loadCounts();
+        }
+      )
+      .subscribe();
+
     return () => {
       supabase.removeChannel(msgChannel);
       supabase.removeChannel(introChannel);
-      supabase.removeChannel(likesChannel);
+      supabase.removeChannel(likesIncomingChannel);
+      supabase.removeChannel(likesOutgoingChannel);
     };
   }, [user, loadCounts]);
 
