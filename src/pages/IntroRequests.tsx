@@ -15,7 +15,10 @@ import {
   CardDescription,
 } from '@/components/ui/card';
 import { Badge } from '@/components/ui/Badge';
+import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { toast } from 'sonner';
+import PublicProfileModal from '@/components/profile/PublicProfileModal';
+import type { PublicProfile } from '@/components/profile/PublicProfileView';
 
 type IntroStatus = 'pending' | 'approved' | 'rejected';
 
@@ -44,11 +47,13 @@ type IntroWithProfile = {
   created_at: string;
   wali_id: string | null;
   waliApproved: boolean | null;
+  otherUserId: string;
   otherProfile: {
     name: string;
     cityState: string;
     ageLabel: string;
     gender: string | null;
+    photoUrl: string | null;
   } | null;
 };
 
@@ -83,6 +88,38 @@ export default function IntroRequests() {
   const [received, setReceived] = useState<IntroWithProfile[]>([]);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
+  const openProfile = async (userId: string) => {
+    if (loadingProfile) return;
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('get_public_profile', { p_user_id: userId })
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        toast.error('Profile not found.');
+        return;
+      }
+
+      setSelectedProfile(data as PublicProfile);
+      setProfileModalOpen(true);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      toast.error('Could not load profile.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const closeProfile = () => {
+    setProfileModalOpen(false);
+    setSelectedProfile(null);
+  };
 
   useEffect(() => {
     if (authLoading) return;
@@ -120,6 +157,25 @@ export default function IntroRequests() {
 
       const rows = (data || []) as IntroRowFromRpc[];
 
+      // Photos aren't included in get_intro_requests_for_user, so batch-
+      // fetch them via the get_basic_profiles RPC (SECURITY DEFINER, so
+      // it bypasses media RLS the same way Discover does).
+      const otherUserIds = [...new Set(rows.map((r) => r.other_user_id))];
+      const photoByUserId = new Map<string, string | null>();
+      if (otherUserIds.length > 0) {
+        const { data: photoRows, error: photoErr } = await supabase.rpc(
+          'get_basic_profiles',
+          { p_user_ids: otherUserIds }
+        );
+        if (photoErr) {
+          console.error('Error loading photos for intro requests:', photoErr);
+        } else {
+          for (const p of (photoRows ?? []) as any[]) {
+            photoByUserId.set(p.id, p.profile_photo_url ?? null);
+          }
+        }
+      }
+
       const mapped: IntroWithProfile[] = rows.map((row) => {
         const age = calculateAge(row.other_dob);
         const name =
@@ -139,11 +195,13 @@ export default function IntroRequests() {
           created_at: row.created_at,
           wali_id: row.wali_id,
           waliApproved: row.wali_approved,
+          otherUserId: row.other_user_id,
           otherProfile: {
             name,
             cityState: cityState || '—',
             ageLabel: age != null ? `${age} yrs` : 'Age N/A',
             gender: row.other_gender,
+            photoUrl: photoByUserId.get(row.other_user_id) ?? null,
           },
         };
       });
@@ -425,33 +483,56 @@ export default function IntroRequests() {
                     key={req.id}
                     className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
                   >
-                    <div>
-                      <p className="font-semibold">
-                        To:{' '}
-                        {req.otherProfile
-                          ? req.otherProfile.name
-                          : 'Unknown member'}
-                      </p>
-                      {req.otherProfile && (
-                        <p className="text-sm text-gray-600">
-                          {req.otherProfile.ageLabel} • {req.otherProfile.cityState}
-                        </p>
-                      )}
-                      <p className="text-xs text-gray-500 mt-1">
-                        Sent on {formatDate(req.created_at)}
-                      </p>
-                      {req.message && (
-                        <p className="text-sm text-gray-700 mt-2 italic">
-                          “{req.message}”
-                        </p>
-                      )}
+                    <div className="flex items-start gap-3 flex-1 min-w-0">
                       <button
                         type="button"
-                        onClick={() => copyId(req.id)}
-                        className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
+                        onClick={() => openProfile(req.otherUserId)}
+                        className="flex-shrink-0 hover:ring-2 hover:ring-emerald-300 rounded-full transition-all"
+                        title="View full profile"
                       >
-                        Copy request ID
+                        <Avatar className="h-12 w-12">
+                          {req.otherProfile?.photoUrl && (
+                            <AvatarImage src={req.otherProfile.photoUrl} />
+                          )}
+                          <AvatarFallback className="bg-emerald-500 text-white">
+                            {(req.otherProfile?.name?.charAt(0) || '?').toUpperCase()}
+                          </AvatarFallback>
+                        </Avatar>
                       </button>
+
+                      <div className="min-w-0">
+                        <button
+                          type="button"
+                          onClick={() => openProfile(req.otherUserId)}
+                          className="font-semibold text-left hover:text-emerald-700 hover:underline underline-offset-2"
+                          title="View full profile"
+                        >
+                          To:{' '}
+                          {req.otherProfile
+                            ? req.otherProfile.name
+                            : 'Unknown member'}
+                        </button>
+                        {req.otherProfile && (
+                          <p className="text-sm text-gray-600">
+                            {req.otherProfile.ageLabel} • {req.otherProfile.cityState}
+                          </p>
+                        )}
+                        <p className="text-xs text-gray-500 mt-1">
+                          Sent on {formatDate(req.created_at)}
+                        </p>
+                        {req.message && (
+                          <p className="text-sm text-gray-700 mt-2 italic">
+                            “{req.message}”
+                          </p>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() => copyId(req.id)}
+                          className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
+                        >
+                          Copy request ID
+                        </button>
+                      </div>
                     </div>
                     <div className="flex flex-col items-end gap-2">
                       {statusBadge(req.status)}
@@ -491,8 +572,6 @@ export default function IntroRequests() {
                 {received.map((req) => {
                   const isCurrentUserWali = req.wali_id === user.id;
 
-                  console.log('req',req)
-
                   // Female recipient with wali: show waiting message + hide buttons
                   const waitingForWali =
                     !!req.wali_id &&
@@ -505,34 +584,57 @@ export default function IntroRequests() {
                       key={req.id}
                       className="border rounded-lg p-4 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
                     >
-                      <div>
-                        <p className="font-semibold">
-                          From:{' '}
-                          {req.otherProfile
-                            ? req.otherProfile.name
-                            : 'Unknown member'}
-                        </p>
-                        {req.otherProfile && (
-                          <p className="text-sm text-gray-600">
-                            {req.otherProfile.ageLabel} •{' '}
-                            {req.otherProfile.cityState}
-                          </p>
-                        )}
-                        <p className="text-xs text-gray-500 mt-1">
-                          Received on {formatDate(req.created_at)}
-                        </p>
-                        {req.message && (
-                          <p className="text-sm text-gray-700 mt-2 italic">
-                            “{req.message}”
-                          </p>
-                        )}
+                      <div className="flex items-start gap-3 flex-1 min-w-0">
                         <button
                           type="button"
-                          onClick={() => copyId(req.id)}
-                          className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
+                          onClick={() => openProfile(req.otherUserId)}
+                          className="flex-shrink-0 hover:ring-2 hover:ring-indigo-300 rounded-full transition-all"
+                          title="View full profile"
                         >
-                          Copy request ID
+                          <Avatar className="h-12 w-12">
+                            {req.otherProfile?.photoUrl && (
+                              <AvatarImage src={req.otherProfile.photoUrl} />
+                            )}
+                            <AvatarFallback className="bg-indigo-500 text-white">
+                              {(req.otherProfile?.name?.charAt(0) || '?').toUpperCase()}
+                            </AvatarFallback>
+                          </Avatar>
                         </button>
+
+                        <div className="min-w-0">
+                          <button
+                            type="button"
+                            onClick={() => openProfile(req.otherUserId)}
+                            className="font-semibold text-left hover:text-indigo-700 hover:underline underline-offset-2"
+                            title="View full profile"
+                          >
+                            From:{' '}
+                            {req.otherProfile
+                              ? req.otherProfile.name
+                              : 'Unknown member'}
+                          </button>
+                          {req.otherProfile && (
+                            <p className="text-sm text-gray-600">
+                              {req.otherProfile.ageLabel} •{' '}
+                              {req.otherProfile.cityState}
+                            </p>
+                          )}
+                          <p className="text-xs text-gray-500 mt-1">
+                            Received on {formatDate(req.created_at)}
+                          </p>
+                          {req.message && (
+                            <p className="text-sm text-gray-700 mt-2 italic">
+                              “{req.message}”
+                            </p>
+                          )}
+                          <button
+                            type="button"
+                            onClick={() => copyId(req.id)}
+                            className="mt-1 text-[11px] text-gray-400 hover:text-gray-600"
+                          >
+                            Copy request ID
+                          </button>
+                        </div>
                       </div>
 
                       <div className="flex flex-col items-end gap-2">
@@ -598,6 +700,12 @@ export default function IntroRequests() {
           </CardContent>
         </Card>
       </div>
+
+      <PublicProfileModal
+        open={profileModalOpen}
+        onClose={closeProfile}
+        profile={selectedProfile}
+      />
     </div>
   );
 }
