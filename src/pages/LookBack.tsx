@@ -6,6 +6,8 @@ import { RotateCcw, Heart, ArrowLeft } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
+import PublicProfileModal from '@/components/profile/PublicProfileModal';
+import type { PublicProfile } from '@/components/profile/PublicProfileView';
 
 type PassedProfile = {
   likeId: string;
@@ -25,6 +27,9 @@ export default function LookBack() {
   const [loading, setLoading] = useState(true);
   const [liked, setLiked] = useState<Set<string>>(new Set());
   const [pendingLike, setPendingLike] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -154,6 +159,35 @@ export default function LookBack() {
     }
   };
 
+  const openProfile = async (userId: string) => {
+    if (loadingProfile) return;
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('get_public_profile', { p_user_id: userId })
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        toast.error('Profile not found.');
+        return;
+      }
+
+      setSelectedProfile(data as PublicProfile);
+      setProfileModalOpen(true);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      toast.error('Could not load profile.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const closeProfile = () => {
+    setProfileModalOpen(false);
+    setSelectedProfile(null);
+  };
+
   const displayList = passed.filter((p) => !liked.has(p.userId));
 
   return (
@@ -199,7 +233,12 @@ export default function LookBack() {
                 key={profile.likeId}
                 className="bg-white rounded-2xl shadow-sm border p-4 flex items-center gap-4"
               >
-                <div className="h-14 w-14 rounded-full overflow-hidden bg-gray-100 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openProfile(profile.userId)}
+                  className="h-14 w-14 rounded-full overflow-hidden bg-gray-100 flex-shrink-0 hover:ring-2 hover:ring-teal-300 transition-all"
+                  title="View full profile"
+                >
                   {profile.photoUrl ? (
                     <img
                       src={profile.photoUrl}
@@ -211,10 +250,15 @@ export default function LookBack() {
                       <RotateCcw className="h-6 w-6 text-gray-300" />
                     </div>
                   )}
-                </div>
+                </button>
 
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900">
+                <button
+                  type="button"
+                  onClick={() => openProfile(profile.userId)}
+                  className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+                  title="View full profile"
+                >
+                  <p className="font-semibold text-gray-900 hover:text-teal-700 underline-offset-2 hover:underline">
                     {profile.firstName ?? 'Member'}
                     {profile.age ? (
                       <span className="font-normal text-gray-500">, {profile.age}</span>
@@ -228,7 +272,7 @@ export default function LookBack() {
                   <p className="text-xs text-gray-400 mt-0.5">
                     Passed {formatDistanceToNow(new Date(profile.passedAt), { addSuffix: true })}
                   </p>
-                </div>
+                </button>
 
                 <Button
                   size="sm"
@@ -243,6 +287,23 @@ export default function LookBack() {
           </div>
         )}
       </div>
+
+      <PublicProfileModal
+        open={profileModalOpen}
+        onClose={closeProfile}
+        profile={selectedProfile}
+        onLike={
+          selectedProfile
+            ? async () => {
+                await handleLike(
+                  selectedProfile.id,
+                  selectedProfile.first_name ?? 'them'
+                );
+                closeProfile();
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }

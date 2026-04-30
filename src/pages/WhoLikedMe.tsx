@@ -6,6 +6,8 @@ import { Heart, ArrowLeft, X } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
+import PublicProfileModal from '@/components/profile/PublicProfileModal';
+import type { PublicProfile } from '@/components/profile/PublicProfileView';
 
 type LikerProfile = {
   likeId: string;
@@ -27,6 +29,9 @@ export default function WhoLikedMe() {
   const [passed, setPassed] = useState<Set<string>>(new Set());
   const [pendingLike, setPendingLike] = useState<string | null>(null);
   const [pendingPass, setPendingPass] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
 
   useEffect(() => {
     if (!user) return;
@@ -184,6 +189,35 @@ export default function WhoLikedMe() {
     }
   };
 
+  const openProfile = async (userId: string) => {
+    if (loadingProfile) return;
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('get_public_profile', { p_user_id: userId })
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        toast.error('Profile not found.');
+        return;
+      }
+
+      setSelectedProfile(data as PublicProfile);
+      setProfileModalOpen(true);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      toast.error('Could not load profile.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const closeProfile = () => {
+    setProfileModalOpen(false);
+    setSelectedProfile(null);
+  };
+
   // Hide rows the user has already responded to so the list mirrors the
   // unread badge count.
   const visibleLikers = likers.filter(
@@ -228,7 +262,12 @@ export default function WhoLikedMe() {
                 key={liker.likeId}
                 className="bg-white rounded-2xl shadow-sm border p-4 flex items-center gap-4"
               >
-                <div className="h-14 w-14 rounded-full overflow-hidden bg-gray-100 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => openProfile(liker.userId)}
+                  className="h-14 w-14 rounded-full overflow-hidden bg-gray-100 flex-shrink-0 hover:ring-2 hover:ring-teal-300 transition-all"
+                  title="View full profile"
+                >
                   {liker.photoUrl ? (
                     <img
                       src={liker.photoUrl}
@@ -240,10 +279,15 @@ export default function WhoLikedMe() {
                       <Heart className="h-6 w-6 text-gray-300" />
                     </div>
                   )}
-                </div>
+                </button>
 
-                <div className="flex-1 min-w-0">
-                  <p className="font-semibold text-gray-900">
+                <button
+                  type="button"
+                  onClick={() => openProfile(liker.userId)}
+                  className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
+                  title="View full profile"
+                >
+                  <p className="font-semibold text-gray-900 hover:text-teal-700 underline-offset-2 hover:underline">
                     {liker.firstName ?? 'Member'}
                     {liker.age ? (
                       <span className="font-normal text-gray-500">, {liker.age}</span>
@@ -257,7 +301,7 @@ export default function WhoLikedMe() {
                   <p className="text-xs text-gray-400 mt-0.5">
                     {formatDistanceToNow(new Date(liker.likedAt), { addSuffix: true })}
                   </p>
-                </div>
+                </button>
 
                 <Button
                   size="icon"
@@ -293,6 +337,31 @@ export default function WhoLikedMe() {
           </div>
         )}
       </div>
+
+      <PublicProfileModal
+        open={profileModalOpen}
+        onClose={closeProfile}
+        profile={selectedProfile}
+        onLike={
+          selectedProfile
+            ? async () => {
+                await handleLikeBack(
+                  selectedProfile.id,
+                  selectedProfile.first_name ?? 'them'
+                );
+                closeProfile();
+              }
+            : undefined
+        }
+        onPass={
+          selectedProfile
+            ? async () => {
+                await handlePass(selectedProfile.id);
+                closeProfile();
+              }
+            : undefined
+        }
+      />
     </div>
   );
 }
