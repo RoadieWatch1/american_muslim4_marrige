@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { useToast } from "@/hooks/use-toast";
+import { PaymentMethodsNotice } from "@/components/billing/PaymentMethodsNotice";
 
 export default function BillingCancelPage() {
   const navigate = useNavigate();
@@ -22,6 +23,10 @@ export default function BillingCancelPage() {
         <p className="mt-2 text-sm text-muted-foreground">
           You cancelled the checkout. If you still want to upgrade, you can try again.
         </p>
+
+        <div className="mt-4">
+          <PaymentMethodsNotice />
+        </div>
 
         <div className="mt-6 flex flex-col gap-3">
           <Button onClick={() => navigate("/pricing")}>Back to Pricing</Button>

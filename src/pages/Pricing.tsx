@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { useToast } from '@/hooks/use-toast';
 import { useNavigate } from 'react-router-dom';
 import { startCheckout } from '@/lib/startCheckout';
+import { PaymentMethodsNotice } from '@/components/billing/PaymentMethodsNotice';
 
 const tiers = [
   {
@@ -114,6 +115,8 @@ export default function Pricing() {
             Find your perfect match with the right subscription
           </p>
         </div>
+
+        <PaymentMethodsNotice />
 
         <div className="grid md:grid-cols-3 gap-8 max-w-6xl mx-auto">
           {tiers.map((tier) => {

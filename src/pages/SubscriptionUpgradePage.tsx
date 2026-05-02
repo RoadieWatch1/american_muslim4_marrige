@@ -5,6 +5,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { buildCheckoutUrl } from '@/lib/ccbill';
+import { PaymentMethodsNotice } from '@/components/billing/PaymentMethodsNotice';
 
 type PlanId = 'free' | 'silver' | 'gold';
 
@@ -221,6 +222,8 @@ export default function SubscriptionUpgradePage() {
             Start with Free, upgrade to Silver or Gold when you’re ready.
           </p>
         </div>
+
+        <PaymentMethodsNotice />
 
         {/* Plans grid */}
         <div className="grid md:grid-cols-3 gap-8">
