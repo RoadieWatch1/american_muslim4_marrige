@@ -55,7 +55,7 @@ export const Navigation: React.FC = () => {
               How It Works
             </button>
             <button
-              onClick={() => navigate("/pricing")}
+              onClick={() => scrollToSection("pricing")}
               className="text-foreground/70 hover:text-foreground font-medium transition-colors duration-200"
             >
               Pricing
@@ -111,7 +111,7 @@ export const Navigation: React.FC = () => {
                 Discover
               </button>
               <button
-                onClick={() => navigate("/pricing")}
+                onClick={() => scrollToSection("pricing")}
                 className="text-foreground/70 hover:text-foreground font-medium transition-colors duration-200"
               >
                 Pricing
