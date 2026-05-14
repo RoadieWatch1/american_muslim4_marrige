@@ -239,10 +239,12 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-amber-900 leading-relaxed">
                   <p className="font-semibold mb-1">Don't see the email? Check your spam folder.</p>
-                  <ul className="list-disc list-inside space-y-1 text-amber-800">
-                    <li>Search your inbox for <em>"AM4M"</em> or <em>"confirmation"</em>.</li>
-                    <li>If you find it in Spam or Junk, mark it <strong>Not Spam</strong> so future emails reach your inbox.</li>
-                  </ul>
+                  <p className="mb-2 text-amber-900">
+                    <strong>Important:</strong> if you find it in Spam or Junk, <strong>move it to your inbox first</strong> (or mark it <strong>Not Spam</strong>). Then click the confirmation link from your inbox — clicking it from the spam folder may not work.
+                  </p>
+                  <p className="text-amber-800">
+                    Search your inbox for <em>"AM4M"</em> or <em>"confirmation"</em>.
+                  </p>
                 </div>
               </div>
             </div>

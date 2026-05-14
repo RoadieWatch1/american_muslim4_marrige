@@ -191,7 +191,7 @@ export default function VerifyEmail() {
                 <div className="text-sm text-amber-900 leading-relaxed">
                   <p className="font-semibold mb-1">Tip: check your spam folder.</p>
                   <p className="text-amber-800">
-                    AM4M emails sometimes land in <strong>Spam</strong> or <strong>Junk</strong>. If you find it there, mark it <strong>Not Spam</strong> so future codes reach your inbox.
+                    AM4M emails sometimes land in <strong>Spam</strong> or <strong>Junk</strong>. If you find it there, <strong>move it to your inbox first</strong> (or mark it <strong>Not Spam</strong>), then use the code or click the link from your inbox.
                   </p>
                 </div>
               </div>
@@ -232,10 +232,12 @@ export default function VerifyEmail() {
                 <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
                 <div className="text-sm text-amber-900 leading-relaxed">
                   <p className="font-semibold mb-1">Don't see the email?</p>
+                  <p className="mb-2 text-amber-900">
+                    <strong>Important:</strong> if you find it in Spam or Junk, <strong>move it to your inbox first</strong> (or mark it <strong>Not Spam</strong>). Then copy the 6-digit code from your inbox — codes pulled from spam sometimes don't work.
+                  </p>
                   <ul className="list-disc list-inside space-y-1 text-amber-800">
                     <li>Check your <strong>Spam</strong> or <strong>Junk</strong> folder.</li>
                     <li>Search your inbox for <em>"AM4M"</em> or <em>"verification code"</em>.</li>
-                    <li>If you find it in spam, mark it <strong>Not Spam</strong> so future emails arrive in your inbox.</li>
                     <li>Still nothing after a minute? Tap <strong>Resend Code</strong> below.</li>
                   </ul>
                 </div>
