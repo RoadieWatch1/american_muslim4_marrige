@@ -4,7 +4,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { CheckCircle, XCircle, Loader2, Mail } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, Mail, AlertTriangle } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 export default function VerifyEmail() {
@@ -180,9 +180,22 @@ export default function VerifyEmail() {
           )}
 
           {status === 'error' && (
-            <div className="text-center space-y-4">
-              <XCircle className="w-16 h-16 text-red-600 mx-auto" />
-              <p className="text-red-600 font-semibold">{message}</p>
+            <div className="space-y-4">
+              <div className="text-center space-y-2">
+                <XCircle className="w-16 h-16 text-red-600 mx-auto" />
+                <p className="text-red-600 font-semibold">{message}</p>
+              </div>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3 text-left">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-900 leading-relaxed">
+                  <p className="font-semibold mb-1">Tip: check your spam folder.</p>
+                  <p className="text-amber-800">
+                    AM4M emails sometimes land in <strong>Spam</strong> or <strong>Junk</strong>. If you find it there, mark it <strong>Not Spam</strong> so future codes reach your inbox.
+                  </p>
+                </div>
+              </div>
+
               {user && (
                 <Button onClick={handleResendCode} disabled={resending} className="w-full">
                   {resending ? 'Sending…' : 'Resend 6-digit Code'}
@@ -214,6 +227,19 @@ export default function VerifyEmail() {
               <Button onClick={handleVerifyCode} disabled={verifyingCode || otp.length !== 6} className="w-full">
                 {verifyingCode ? 'Verifying…' : 'Verify Code'}
               </Button>
+
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-900 leading-relaxed">
+                  <p className="font-semibold mb-1">Don't see the email?</p>
+                  <ul className="list-disc list-inside space-y-1 text-amber-800">
+                    <li>Check your <strong>Spam</strong> or <strong>Junk</strong> folder.</li>
+                    <li>Search your inbox for <em>"AM4M"</em> or <em>"verification code"</em>.</li>
+                    <li>If you find it in spam, mark it <strong>Not Spam</strong> so future emails arrive in your inbox.</li>
+                    <li>Still nothing after a minute? Tap <strong>Resend Code</strong> below.</li>
+                  </ul>
+                </div>
+              </div>
 
               <div className="text-center">
                 <Button
