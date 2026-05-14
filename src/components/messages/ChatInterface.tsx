@@ -21,6 +21,8 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { notifyNewMessage } from '@/lib/notifications';
 import { toast } from 'sonner';
+import PublicProfileModal from '@/components/profile/PublicProfileModal';
+import type { PublicProfile } from '@/components/profile/PublicProfileView';
 
 // same helper as in ConversationList
 const AVATAR_COLORS = [
@@ -61,6 +63,38 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
+  const [profileModalOpen, setProfileModalOpen] = useState(false);
+  const [loadingProfile, setLoadingProfile] = useState(false);
+
+  const openProfile = async () => {
+    if (loadingProfile) return;
+    setLoadingProfile(true);
+    try {
+      const { data, error } = await supabase
+        .rpc('get_public_profile', { p_user_id: conversation.other_user.id })
+        .maybeSingle();
+
+      if (error) throw error;
+      if (!data) {
+        toast.error('Profile not found.');
+        return;
+      }
+
+      setSelectedProfile(data as PublicProfile);
+      setProfileModalOpen(true);
+    } catch (err) {
+      console.error('Failed to load profile:', err);
+      toast.error('Could not load profile.');
+    } finally {
+      setLoadingProfile(false);
+    }
+  };
+
+  const closeProfile = () => {
+    setProfileModalOpen(false);
+    setSelectedProfile(null);
+  };
 
   // Load + subscribe
   useEffect(() => {
@@ -295,19 +329,33 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
           <ArrowLeft className="h-5 w-5" />
         </Button>
 
-        <Avatar>
-          {conversation.other_user.photos?.[0] && (
-            <AvatarImage src={conversation.other_user.photos[0]} />
-          )}
-          <AvatarFallback className={`${avatarColor} text-white font-semibold`}>
-            {initial}
-          </AvatarFallback>
-        </Avatar>
+        <button
+          type="button"
+          onClick={openProfile}
+          className="rounded-full hover:ring-2 hover:ring-teal-300 transition-all flex-shrink-0"
+          title="View full profile"
+        >
+          <Avatar>
+            {conversation.other_user.photos?.[0] && (
+              <AvatarImage src={conversation.other_user.photos[0]} />
+            )}
+            <AvatarFallback className={`${avatarColor} text-white font-semibold`}>
+              {initial}
+            </AvatarFallback>
+          </Avatar>
+        </button>
 
-        <div className="flex-1">
-          <h3 className="font-semibold">{displayName}</h3>
+        <button
+          type="button"
+          onClick={openProfile}
+          className="flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
+          title="View full profile"
+        >
+          <h3 className="font-semibold hover:text-teal-700 hover:underline underline-offset-2 truncate">
+            {displayName}
+          </h3>
           {isTyping && <p className="text-xs text-muted-foreground">typing...</p>}
-        </div>
+        </button>
 
         {!conversation.wali_can_view && (
           <AlertDialog>
@@ -380,6 +428,12 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
           </Button>
         </form>
       )}
+
+      <PublicProfileModal
+        open={profileModalOpen}
+        onClose={closeProfile}
+        profile={selectedProfile}
+      />
     </div>
   );
 }
