@@ -44,21 +44,26 @@ Deno.serve(async (req) => {
 
   try {
     const body: EmailRequest = await req.json();
-    const { type, to, recipientUserId, data } = body;
+    const { type, to, recipientUserId, data = {} } = body;
 
     if (!type || !to) {
       throw new Error("Missing required fields: type, to");
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
+    const supabaseUrl = Deno.env.get("SUPABASE_URL");
+    const supabaseKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+    if (!supabaseUrl || !supabaseKey) {
+      throw new Error(
+        "Supabase environment variables are missing: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY"
+      );
+    }
+
     const supabase = createClient(supabaseUrl, supabaseKey);
 
     // ─────────────────────────────────────────────────────────────
     // 1) Preferences + digest routing
     // ─────────────────────────────────────────────────────────────
-    let notificationFrequency: string | null = null;
-
     if (recipientUserId) {
       const { data: profile, error } = await supabase
         .from("profiles")
@@ -71,21 +76,16 @@ Deno.serve(async (req) => {
       if (error) {
         console.error("Error fetching preferences:", error);
       } else if (profile) {
-        notificationFrequency = profile.notification_frequency;
-
         if (!profile.email_notifications_enabled) {
-          return new Response(
-            JSON.stringify({
-              success: true,
-              skipped: true,
-              reason: "Email notifications disabled",
-            }),
-            { headers: { "Content-Type": "application/json", ...corsHeaders } }
-          );
+          return jsonResponse({
+            success: true,
+            skipped: true,
+            reason: "Email notifications disabled",
+          });
         }
 
         // Map each email type to the user's preference column.
-        // new_like reuses notify_matches since likes-and-matches are
+        // new_like reuses notify_matches since likes and matches are
         // both "someone is interested in you" events.
         const typePreferenceMap: Record<EmailType, keyof typeof profile> = {
           wali_invitation: "notify_wali_invitations",
@@ -96,18 +96,17 @@ Deno.serve(async (req) => {
         };
 
         const preferenceKey = typePreferenceMap[type];
+
         if (preferenceKey && profile[preferenceKey] === false) {
-          return new Response(
-            JSON.stringify({
-              success: true,
-              skipped: true,
-              reason: `${type} notifications disabled`,
-            }),
-            { headers: { "Content-Type": "application/json", ...corsHeaders } }
-          );
+          return jsonResponse({
+            success: true,
+            skipped: true,
+            reason: `${type} notifications disabled`,
+          });
         }
 
-        // Digest mode: queue for batched delivery later
+        // Digest mode: queue for batched delivery later.
+        // A separate scheduled function should process pending_notifications.
         if (profile.notification_frequency !== "instant") {
           const { subject, html } = generateEmailContent(type, data);
 
@@ -126,31 +125,28 @@ Deno.serve(async (req) => {
             throw insertError;
           }
 
-          return new Response(
-            JSON.stringify({
-              success: true,
-              queued: true,
-              frequency: profile.notification_frequency,
-            }),
-            { headers: { "Content-Type": "application/json", ...corsHeaders } }
-          );
+          return jsonResponse({
+            success: true,
+            queued: true,
+            frequency: profile.notification_frequency,
+          });
         }
       }
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 2) Batching for instant new_message (unchanged)
+    // 2) Batching for instant new_message
     // ─────────────────────────────────────────────────────────────
     if (type === "new_message" && recipientUserId) {
-      const senderName = (data?.senderName || "someone").trim();
-      const loginUrl = data?.loginUrl || "https://your-app.com/messages";
+      const senderNameRaw = safeTrim(data.senderName, "someone");
+      const loginUrl = safeUrl(data.loginUrl, "https://your-app.com/messages");
 
-      const { data: inserted, error: insErr } = await supabase
+      const { error: insErr } = await supabase
         .from("pending_notifications")
         .insert({
           user_id: recipientUserId,
           notification_type: "new_message",
-          subject: `New message from ${senderName}`,
+          subject: `New message from ${senderNameRaw}`,
           content: "",
           metadata: { to, data },
         })
@@ -170,7 +166,7 @@ Deno.serve(async (req) => {
           .eq("user_id", recipientUserId)
           .eq("notification_type", "new_message")
           .eq("is_sent", true)
-          .eq("metadata->data->>senderName", senderName)
+          .eq("metadata->data->>senderName", senderNameRaw)
           .gte("created_at", throttleSince)
           .order("created_at", { ascending: false })
           .limit(1);
@@ -180,15 +176,12 @@ Deno.serve(async (req) => {
         }
 
         if (recentSent && recentSent.length > 0) {
-          return new Response(
-            JSON.stringify({
-              success: true,
-              queued: true,
-              batched: true,
-              reason: "throttled_recent_email",
-            }),
-            { headers: { "Content-Type": "application/json", ...corsHeaders } }
-          );
+          return jsonResponse({
+            success: true,
+            queued: true,
+            batched: true,
+            reason: "throttled_recent_email",
+          });
         }
 
         const batchSince = new Date(
@@ -201,7 +194,7 @@ Deno.serve(async (req) => {
           .eq("user_id", recipientUserId)
           .eq("notification_type", "new_message")
           .eq("is_sent", false)
-          .eq("metadata->data->>senderName", senderName)
+          .eq("metadata->data->>senderName", senderNameRaw)
           .gte("created_at", batchSince)
           .order("created_at", { ascending: true });
 
@@ -212,7 +205,7 @@ Deno.serve(async (req) => {
 
           if (count > 0) {
             const { subject, html } = generateBatchedNewMessageEmail({
-              senderName,
+              senderName: senderNameRaw,
               loginUrl,
               rows: batchRows,
               maxPreviews: MAX_PREVIEWS,
@@ -221,6 +214,7 @@ Deno.serve(async (req) => {
             await sendViaResend({ subject, html, to });
 
             const ids = batchRows.map((r: any) => r.id);
+
             const { error: updErr } = await supabase
               .from("pending_notifications")
               .update({
@@ -235,62 +229,93 @@ Deno.serve(async (req) => {
               console.error("Failed to mark batch as sent:", updErr);
             }
 
-            return new Response(
-              JSON.stringify({
-                success: true,
-                sent: true,
-                batched: true,
-                count,
-              }),
-              { headers: { "Content-Type": "application/json", ...corsHeaders } }
-            );
+            return jsonResponse({
+              success: true,
+              sent: true,
+              batched: true,
+              count,
+            });
           }
         }
       }
 
       const { subject, html } = generateEmailContent("new_message", data);
+
       await sendViaResend({ subject, html, to });
 
-      return new Response(JSON.stringify({ success: true, sent: true }), {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+      return jsonResponse({
+        success: true,
+        sent: true,
       });
     }
 
     // ─────────────────────────────────────────────────────────────
-    // 3) All other instant emails (intro_request / match / wali_invitation / new_like)
+    // 3) All other instant emails
+    // intro_request / match / wali_invitation / new_like
     // ─────────────────────────────────────────────────────────────
     const { subject, html } = generateEmailContent(type, data);
 
-    console.log("Sending email", { type, to, recipientUserId, subject });
+    console.log("Sending email", {
+      type,
+      to,
+      recipientUserId,
+      subject,
+    });
 
     await sendViaResend({ subject, html, to });
 
-    return new Response(JSON.stringify({ success: true }), {
-      headers: { "Content-Type": "application/json", ...corsHeaders },
+    return jsonResponse({
+      success: true,
+      sent: true,
     });
   } catch (error: any) {
     console.error("send-notification-email error:", error);
+
     return new Response(
-      JSON.stringify({ success: false, error: error.message }),
+      JSON.stringify({
+        success: false,
+        error: error?.message || "Unknown error",
+      }),
       {
         status: 400,
-        headers: { "Content-Type": "application/json", ...corsHeaders },
+        headers: {
+          "Content-Type": "application/json",
+          ...corsHeaders,
+        },
       }
     );
   }
 });
 
 /* ─────────────────────────────────────────────────────────────
+ * Response helper
+ * ───────────────────────────────────────────────────────────── */
+function jsonResponse(payload: Record<string, unknown>, status = 200) {
+  return new Response(JSON.stringify(payload), {
+    status,
+    headers: {
+      "Content-Type": "application/json",
+      ...corsHeaders,
+    },
+  });
+}
+
+/* ─────────────────────────────────────────────────────────────
  * Resend helper
  * ───────────────────────────────────────────────────────────── */
-async function sendViaResend(args: { to: string; subject: string; html: string }) {
+async function sendViaResend(args: {
+  to: string;
+  subject: string;
+  html: string;
+}) {
   const resendApiKey =
     Deno.env.get("RESEND_API_KEY") || Deno.env.get("RESENDAPIKEY");
+
   const resendDomain = Deno.env.get("RESENDDOMAIN");
 
   if (!resendApiKey) {
     throw new Error(
-      "Resend API key not configured (RESEND_API_KEY or RESENDAPIKEY)"
+      "Resend API key not configured. Add RESEND_API_KEY or RESENDAPIKEY."
     );
   }
 
@@ -313,11 +338,13 @@ async function sendViaResend(args: { to: string; subject: string; html: string }
   });
 
   const resultText = await response.text();
+
   let result: any = null;
+
   try {
     result = JSON.parse(resultText);
   } catch {
-    // keep as text
+    // Keep resultText if Resend returns non-JSON.
   }
 
   if (!response.ok) {
@@ -326,8 +353,11 @@ async function sendViaResend(args: { to: string; subject: string; html: string }
       statusText: response.statusText,
       result: result ?? resultText,
     });
+
     throw new Error(result?.message || resultText || "Failed to send email");
   }
+
+  return result;
 }
 
 /* ─────────────────────────────────────────────────────────────
@@ -342,11 +372,17 @@ function generateBatchedNewMessageEmail(opts: {
   const { senderName, loginUrl, rows, maxPreviews } = opts;
 
   const count = rows.length;
+  const safeSenderName = escapeHtml(senderName);
+  const safeLoginUrl = safeUrl(loginUrl, "https://your-app.com/messages");
 
   const previews: string[] = [];
+
   for (const r of rows) {
     const msg = r?.metadata?.data?.message;
-    if (typeof msg === "string" && msg.trim()) previews.push(msg.trim());
+
+    if (typeof msg === "string" && msg.trim()) {
+      previews.push(msg.trim());
+    }
   }
 
   const shown = previews.slice(-maxPreviews);
@@ -359,9 +395,12 @@ function generateBatchedNewMessageEmail(opts: {
 
   const html = `
     <h2>Assalamu Alaikum,</h2>
-    <p>You have <strong>${count}</strong> unread ${
-      count === 1 ? "message" : "messages"
-    } from <strong>${senderName}</strong>.</p>
+
+    <p>
+      You have <strong>${count}</strong> unread ${
+        count === 1 ? "message" : "messages"
+      } from <strong>${safeSenderName}</strong>.
+    </p>
 
     ${
       shown.length
@@ -370,6 +409,7 @@ function generateBatchedNewMessageEmail(opts: {
               .map((t) => {
                 const preview =
                   t.length > 120 ? t.substring(0, 120) + "..." : t;
+
                 return `<p style="margin:0 0 8px 0;color:#374151;"><em>“${escapeHtml(
                   preview
                 )}”</em></p>`;
@@ -385,124 +425,199 @@ function generateBatchedNewMessageEmail(opts: {
     }
 
     <p>
-      <a href="${loginUrl}"
+      <a href="${safeLoginUrl}"
          style="background:#10b981;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:8px;">
          Open Messages
       </a>
     </p>
+
     <p>JazakAllah Khair,<br/>The Nikah Team</p>
   `;
 
   return { subject, html };
 }
 
-function escapeHtml(s: string) {
-  return s
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-
 /* ─────────────────────────────────────────────────────────────
  * Templates
  * ───────────────────────────────────────────────────────────── */
-function generateEmailContent(type: EmailType, data: any) {
+function generateEmailContent(type: EmailType, data: EmailRequest["data"]) {
   let subject = "";
   let html = "";
 
   switch (type) {
-    case "wali_invitation":
-      subject = `${data.womanName} has invited you to be her Wali`;
+    case "wali_invitation": {
+      const womanNameRaw = safeTrim(data.womanName, "Someone");
+      const womanName = escapeHtml(womanNameRaw);
+      const waliName = escapeHtml(safeTrim(data.waliName, "Dear Guardian"));
+      const loginUrl = safeUrl(data.loginUrl, "https://your-app.com");
+
+      subject = `${womanNameRaw} has invited you to be her Wali`;
+
       html = `
-        <h2>Assalamu Alaikum ${data.waliName || "Dear Guardian"},</h2>
-        <p>${data.womanName} has invited you to be her wali (guardian) on our Islamic matchmaking platform.</p>
+        <h2>Assalamu Alaikum ${waliName},</h2>
+
+        <p>
+          ${womanName} has invited you to be her wali guardian on our Islamic matchmaking platform.
+        </p>
+
         <p>As a wali, you will be able to:</p>
+
         <ul>
           <li>Review introduction requests</li>
           <li>Approve or reject potential matches</li>
           <li>Provide guidance throughout the process</li>
         </ul>
+
         <p>
-          <a href="${data.loginUrl || "https://your-app.com"}"
+          <a href="${loginUrl}"
              style="background:#10b981;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:16px;">
              Access Wali Console
           </a>
         </p>
+
         <p>JazakAllah Khair,<br/>The Nikah Team</p>
       `;
-      break;
 
-    case "intro_request":
-      subject = `New Introduction Request Needs Your Approval`;
+      break;
+    }
+
+    case "intro_request": {
+      const waliName = escapeHtml(safeTrim(data.waliName, "Dear Guardian"));
+      const requesterName = escapeHtml(safeTrim(data.requesterName, "Someone"));
+      const recipientName = escapeHtml(
+        safeTrim(data.recipientName, "the recipient")
+      );
+      const loginUrl = safeUrl(
+        data.loginUrl,
+        "https://your-app.com/intro-requests"
+      );
+
+      const message =
+        typeof data.message === "string" && data.message.trim()
+          ? escapeHtml(data.message.trim())
+          : "";
+
+      subject = "New Introduction Request Needs Your Approval";
+
       html = `
-        <h2>Assalamu Alaikum ${data.waliName || "Dear Guardian"},</h2>
-        <p>${data.requesterName} has sent an introduction request to ${data.recipientName}.</p>
-        ${data.message ? `<p><strong>Message:</strong> "${data.message}"</p>` : ""}
-        <p>Please review this request and provide your approval or rejection.</p>
+        <h2>Assalamu Alaikum ${waliName},</h2>
+
         <p>
-          <a href="${data.loginUrl || "https://your-app.com/intro-requests"}"
+          ${requesterName} has sent an introduction request to ${recipientName}.
+        </p>
+
+        ${
+          message
+            ? `<p><strong>Message:</strong> &quot;${message}&quot;</p>`
+            : ""
+        }
+
+        <p>Please review this request and provide your approval or rejection.</p>
+
+        <p>
+          <a href="${loginUrl}"
              style="background:#10b981;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:16px;">
              Review Request
           </a>
         </p>
+
         <p>JazakAllah Khair,<br/>The Nikah Team</p>
       `;
-      break;
 
-    case "match":
-      subject = `You have a new match!`;
+      break;
+    }
+
+    case "match": {
+      const matchNameRaw = safeTrim(data.matchName, "your match");
+      const matchName = escapeHtml(matchNameRaw);
+      const loginUrl = safeUrl(data.loginUrl, "https://your-app.com/messages");
+
+      subject = "You have a new match!";
+
       html = `
         <h2>Assalamu Alaikum,</h2>
-        <p>Great news! You have matched with ${data.matchName}.</p>
+
+        <p>Great news! You have matched with ${matchName}.</p>
+
         <p>You can now start a conversation and get to know each other better.</p>
+
         <p>
-          <a href="${data.loginUrl || "https://your-app.com/messages"}"
+          <a href="${loginUrl}"
              style="background:#10b981;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:16px;">
              View Messages
           </a>
         </p>
+
         <p>May Allah guide you both,<br/>The Nikah Team</p>
       `;
+
       break;
+    }
 
     case "new_message": {
-      const msg = typeof data.message === "string" ? data.message : "";
+      const senderNameRaw = safeTrim(data.senderName, "someone");
+      const senderName = escapeHtml(senderNameRaw);
+      const loginUrl = safeUrl(data.loginUrl, "https://your-app.com/messages");
+
+      const msg = typeof data.message === "string" ? data.message.trim() : "";
+
       const preview = msg
         ? msg.substring(0, 100) + (msg.length > 100 ? "..." : "")
         : "";
-      subject = `New message from ${data.senderName || "someone"}`;
+
+      subject = `New message from ${senderNameRaw}`;
+
       html = `
         <h2>Assalamu Alaikum,</h2>
-        <p>You have received a new message from ${data.senderName || "someone"}.</p>
-        ${preview ? `<p><em>"${escapeHtml(preview)}"</em></p>` : ""}
+
+        <p>You have received a new message from ${senderName}.</p>
+
+        ${preview ? `<p><em>&quot;${escapeHtml(preview)}&quot;</em></p>` : ""}
+
         <p>
-          <a href="${data.loginUrl || "https://your-app.com/messages"}"
+          <a href="${loginUrl}"
              style="background:#10b981;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:16px;">
              Read Message
           </a>
         </p>
+
         <p>JazakAllah Khair,<br/>The Nikah Team</p>
       `;
+
       break;
     }
 
     case "new_like": {
-      const likerName = data.likerName || "Someone";
-      subject = `${likerName} liked your profile`;
+      const likerNameRaw = safeTrim(data.likerName, "Someone");
+      const likerName = escapeHtml(likerNameRaw);
+      const loginUrl = safeUrl(
+        data.loginUrl,
+        "https://your-app.com/who-liked-me"
+      );
+
+      subject = `${likerNameRaw} liked your profile`;
+
       html = `
         <h2>Assalamu Alaikum,</h2>
-        <p><strong>${escapeHtml(likerName)}</strong> just liked your profile on AM4M.</p>
-        <p>Open <em>Who Liked Me</em> to view their profile and like them back if you're interested.</p>
+
         <p>
-          <a href="${data.loginUrl || "https://your-app.com/who-liked-me"}"
+          <strong>${likerName}</strong> just liked your profile on AM4M.
+        </p>
+
+        <p>
+          Open <em>Who Liked Me</em> to view their profile and like them back if you're interested.
+        </p>
+
+        <p>
+          <a href="${loginUrl}"
              style="background:#10b981;color:white;padding:12px 24px;text-decoration:none;border-radius:6px;display:inline-block;margin-top:16px;">
              View Likes
           </a>
         </p>
+
         <p>JazakAllah Khair,<br/>The Nikah Team</p>
       `;
+
       break;
     }
 
@@ -511,4 +626,44 @@ function generateEmailContent(type: EmailType, data: any) {
   }
 
   return { subject, html };
+}
+
+/* ─────────────────────────────────────────────────────────────
+ * Safety helpers
+ * ───────────────────────────────────────────────────────────── */
+function safeTrim(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+
+  const trimmed = value.trim();
+
+  return trimmed || fallback;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+function safeUrl(value: unknown, fallback: string) {
+  if (typeof value !== "string") return fallback;
+
+  const trimmed = value.trim();
+
+  if (!trimmed) return fallback;
+
+  try {
+    const url = new URL(trimmed);
+
+    if (url.protocol !== "https:" && url.protocol !== "http:") {
+      return fallback;
+    }
+
+    return escapeHtml(url.toString());
+  } catch {
+    return fallback;
+  }
 }
