@@ -1,7 +1,7 @@
 // src/lib/notifications.ts
 import { supabase } from "./supabase";
 
-type EmailType = "wali_invitation" | "intro_request" | "match" | "new_message";
+type EmailType = "wali_invitation" | "intro_request" | "match" | "new_message" | "new_like";
 
 type NotificationData = {
   userId: string; // recipient user id
@@ -96,6 +96,45 @@ export async function notifyNewMessage(params: {
       loginUrl: `${window.location.origin}/messages`,
     },
   });
+}
+
+/**
+ * Email a user that someone just liked their profile.
+ *
+ * We fetch the recipient's email + global email_notifications_enabled flag
+ * here so callers don't have to thread it through. Errors are swallowed —
+ * a missed email should never block a like from being recorded.
+ */
+export async function notifyNewLike(params: {
+  recipientUserId: string;
+  likerName: string;
+}) {
+  try {
+    const { data: receiver, error } = await supabase
+      .from("profiles")
+      .select("id, email, email_notifications_enabled")
+      .eq("id", params.recipientUserId)
+      .maybeSingle();
+
+    if (error) {
+      console.warn("notifyNewLike: failed to load recipient:", error.message);
+      return;
+    }
+    if (!receiver?.email) return;
+    if (receiver.email_notifications_enabled === false) return;
+
+    await sendNotificationEmail({
+      userId: receiver.id,
+      type: "new_like",
+      toEmail: receiver.email,
+      data: {
+        likerName: params.likerName,
+        loginUrl: `${window.location.origin}/who-liked-me`,
+      },
+    });
+  } catch (err) {
+    console.warn("notifyNewLike failed:", err);
+  }
 }
 
 export async function notifyIntroRequest(params: {

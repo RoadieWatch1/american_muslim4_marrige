@@ -12,6 +12,7 @@ import { ProfileCard } from '@/components/ProfileCard';
 import { SwipeActions } from '@/components/SwipeActions';
 import { toast } from 'sonner';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
+import { notifyNewLike } from '@/lib/notifications';
 
 type SwipeDirection = 'left' | 'right' | 'up';
 
@@ -413,6 +414,16 @@ export default function Discover() {
       if (likeError) {
         console.error('Error saving like:', likeError);
         toast.error('Something went wrong. Try again.');
+      }
+
+      if (action === 'like') {
+        // Fire-and-forget email to the recipient
+        const senderName =
+          `${(profile as any)?.first_name ?? ''}`.trim() || 'Someone';
+        void notifyNewLike({
+          recipientUserId: currentProfile.id,
+          likerName: senderName,
+        });
       }
 
       if (action === 'like') {

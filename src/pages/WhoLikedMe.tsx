@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
 import type { PublicProfile } from '@/components/profile/PublicProfileView';
+import { notifyNewLike } from '@/lib/notifications';
 
 type LikerProfile = {
   likeId: string;
@@ -140,6 +141,13 @@ export default function WhoLikedMe() {
 
       setLikedBack((prev) => new Set([...prev, targetUserId]));
       toast.success(`You liked ${targetName} back!`);
+
+      // Email the recipient (best-effort, doesn't block UI)
+      void notifyNewLike({
+        recipientUserId: targetUserId,
+        likerName:
+          (user.user_metadata as any)?.first_name || 'Someone',
+      });
 
       const { data: mutual } = await supabase
         .from('likes')
