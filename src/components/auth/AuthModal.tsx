@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useAuth } from '@/contexts/AuthContext';
-import { CheckCircle, Eye, EyeOff, AlertCircle, Mail } from 'lucide-react';
+import { CheckCircle, Eye, EyeOff, AlertCircle, Mail, AlertTriangle } from 'lucide-react';
 import { ForgotPasswordModal } from './ForgotPasswordModal';
 import { TwoFactorModal } from './TwoFactorModal';
 import { useNavigate } from 'react-router-dom';
@@ -220,6 +220,9 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                   <Button type="submit" className="w-full" disabled={loading}>
                     {loading ? 'Creating Account...' : 'Sign Up'}
                   </Button>
+                  <p className="text-xs text-gray-500 text-center">
+                    After signing up, check your <strong>spam folder</strong> if you don't see the confirmation email.
+                  </p>
                 </form>
               </TabsContent>
             </Tabs>
@@ -232,8 +235,15 @@ export const AuthModal: React.FC<AuthModalProps> = ({ isOpen, onClose }) => {
                 </AlertDescription>
               </Alert>
 
-              <div className="text-sm text-gray-600">
-                Didn’t receive it? Check spam, or try again after a minute.
+              <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+                <AlertTriangle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                <div className="text-sm text-amber-900 leading-relaxed">
+                  <p className="font-semibold mb-1">Don't see the email? Check your spam folder.</p>
+                  <ul className="list-disc list-inside space-y-1 text-amber-800">
+                    <li>Search your inbox for <em>"AM4M"</em> or <em>"confirmation"</em>.</li>
+                    <li>If you find it in Spam or Junk, mark it <strong>Not Spam</strong> so future emails reach your inbox.</li>
+                  </ul>
+                </div>
               </div>
             </div>
           ) : (
