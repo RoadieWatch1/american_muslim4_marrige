@@ -15,6 +15,23 @@ if (!SUPABASE_SERVICE_ROLE_KEY) {
 
 const supabase = createClient(SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY);
 
+const EXPECTED_CLIENT_ACCNUM = "955247";
+const EXPECTED_CLIENT_SUBACC = "0000";
+
+const ACTIVATING_EVENTS = new Set<string>([
+  "NewSaleSuccess",
+  "RenewalSuccess",
+  "UserReactivation",
+]);
+
+const LOG_ONLY_EVENTS = new Set<string>([
+  "Cancellation",
+  "Expiration",
+  "Refund",
+  "Chargeback",
+  "Void",
+]);
+
 function getString(value: unknown): string | null {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
@@ -40,6 +57,14 @@ function isPaidTier(value: string | null): value is "silver" | "gold" {
   return value === "silver" || value === "gold";
 }
 
+function parseDateToIso(value: string | null): string | null {
+  if (!value) return null;
+
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString();
+}
+
 async function parseRequestBody(req: Request): Promise<CCBillPayload> {
   const contentType = req.headers.get("content-type") ?? "";
 
@@ -57,6 +82,38 @@ async function parseRequestBody(req: Request): Promise<CCBillPayload> {
   return Object.fromEntries(params.entries());
 }
 
+async function markProcessed(auditId: string): Promise<void> {
+  const { error } = await supabase
+    .from("ccbill_webhook_events")
+    .update({
+      processed: true,
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", auditId);
+
+  if (error) {
+    console.error("[CCBill Webhook] Failed to mark processed:", error);
+  }
+}
+
+async function markProcessingError(
+  auditId: string,
+  message: string,
+): Promise<void> {
+  console.warn(`[CCBill Webhook] processing_error for ${auditId}: ${message}`);
+  const { error } = await supabase
+    .from("ccbill_webhook_events")
+    .update({
+      processing_error: message,
+      processed_at: new Date().toISOString(),
+    })
+    .eq("id", auditId);
+
+  if (error) {
+    console.error("[CCBill Webhook] Failed to write processing_error:", error);
+  }
+}
+
 Deno.serve(async (req) => {
   if (req.method !== "POST") {
     return new Response("Method not allowed", { status: 405 });
@@ -66,6 +123,7 @@ Deno.serve(async (req) => {
   const queryParams = Object.fromEntries(requestUrl.searchParams.entries());
 
   let payload: CCBillPayload = {};
+  let auditId: string | null = null;
 
   try {
     payload = await parseRequestBody(req);
@@ -115,11 +173,21 @@ Deno.serve(async (req) => {
       "transaction",
     ]);
 
+    const nextRenewalDateRaw = pickString(payload, [
+      "nextRenewalDate",
+      "next_renewal_date",
+    ]);
+
+    const paymentAccount = pickString(payload, [
+      "paymentAccount",
+      "payment_account",
+    ]);
+
     const requestedTier = isPaidTier(requestedTierRaw)
       ? requestedTierRaw
       : null;
 
-    const { error: insertError } = await supabase
+    const { data: insertedEvent, error: insertError } = await supabase
       .from("ccbill_webhook_events")
       .insert({
         event_type: eventType,
@@ -134,14 +202,22 @@ Deno.serve(async (req) => {
         raw_payload: payload,
         raw_query: queryParams,
         processed: false,
-      });
+      })
+      .select("id")
+      .single();
 
-    if (insertError) {
-      console.error("[CCBill Webhook] Failed to insert audit event:", insertError);
+    if (insertError || !insertedEvent) {
+      console.error(
+        "[CCBill Webhook] Failed to insert audit event:",
+        insertError,
+      );
       return new Response("Audit insert failed", { status: 500 });
     }
 
+    auditId = insertedEvent.id as string;
+
     console.log("[CCBill Webhook] Received event:", {
+      auditId,
       eventType,
       eventGroupType,
       clientAccnum,
@@ -152,9 +228,104 @@ Deno.serve(async (req) => {
       transactionId,
     });
 
+    if (clientAccnum !== EXPECTED_CLIENT_ACCNUM) {
+      await markProcessingError(
+        auditId,
+        `Unexpected clientAccnum: ${clientAccnum ?? "(missing)"}`,
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    if (clientSubacc !== EXPECTED_CLIENT_SUBACC) {
+      await markProcessingError(
+        auditId,
+        `Unexpected clientSubacc: ${clientSubacc ?? "(missing)"}`,
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    if (!eventType) {
+      await markProcessingError(auditId, "Missing eventType");
+      return new Response("OK", { status: 200 });
+    }
+
+    if (LOG_ONLY_EVENTS.has(eventType)) {
+      console.log(
+        `[CCBill Webhook] Log-only event ${eventType} for user ${supabaseUserId ?? "(unknown)"}; downgrade not implemented yet.`,
+      );
+      await markProcessed(auditId);
+      return new Response("OK", { status: 200 });
+    }
+
+    if (ACTIVATING_EVENTS.has(eventType)) {
+      if (!supabaseUserId) {
+        await markProcessingError(
+          auditId,
+          "Missing supabaseUserId for activating event",
+        );
+        return new Response("OK", { status: 200 });
+      }
+
+      if (!requestedTier) {
+        await markProcessingError(
+          auditId,
+          `Invalid or missing requestedTier: ${requestedTierRaw ?? "(missing)"}`,
+        );
+        return new Response("OK", { status: 200 });
+      }
+
+      const nowIso = new Date().toISOString();
+
+      const profileUpdate: Record<string, unknown> = {
+        subscription_tier: requestedTier,
+        subscription_status: "active",
+        subscription_cancel_at_period_end: false,
+        ccbill_subscription_id: subscriptionId,
+        ccbill_transaction_id: transactionId,
+        ccbill_last_event_at: nowIso,
+        updated_at: nowIso,
+      };
+
+      if (paymentAccount) {
+        profileUpdate.ccbill_payment_account = paymentAccount;
+      }
+
+      const parsedRenewal = parseDateToIso(nextRenewalDateRaw);
+      if (parsedRenewal) {
+        profileUpdate.subscription_end_date = parsedRenewal;
+      }
+
+      const { error: profileError } = await supabase
+        .from("profiles")
+        .update(profileUpdate)
+        .eq("id", supabaseUserId);
+
+      if (profileError) {
+        await markProcessingError(
+          auditId,
+          `Profile update failed: ${profileError.message}`,
+        );
+        return new Response("OK", { status: 200 });
+      }
+
+      await markProcessed(auditId);
+      console.log(
+        `[CCBill Webhook] Profile ${supabaseUserId} upgraded to ${requestedTier}.`,
+      );
+      return new Response("OK", { status: 200 });
+    }
+
+    await markProcessingError(auditId, `Unhandled event type: ${eventType}`);
     return new Response("OK", { status: 200 });
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     console.error("[CCBill Webhook] Unhandled error:", error);
+
+    if (auditId) {
+      await markProcessingError(auditId, `Unhandled error: ${message}`);
+      return new Response("OK", { status: 200 });
+    }
+
     return new Response("Webhook error", { status: 500 });
   }
 });

@@ -33,6 +33,8 @@ import SubscriptionUpgradePage from "./pages/SubscriptionUpgradePage";
 import BillingSuccessPage from "./pages/BillingSuccessPage";
 import { AuthModalProvider } from "./contexts/AuthModalContext";
 import BillingCancelPage from "./pages/BillingCancelPage";
+import CheckoutSuccessPage from "./pages/CheckoutSuccessPage";
+import CheckoutFailedPage from "./pages/CheckoutFailedPage";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
 import { ScrollToTop } from "./components/ScrollToTop";
@@ -69,6 +71,11 @@ const App = () => (
                   <Route path="/wali-invite" element={<WaliInvite />} />
                   <Route path="/terms" element={<TermsOfService />} />
                   <Route path="/privacy" element={<PrivacyPolicy />} />
+
+                  {/* CCBill return URLs — must be public so users aren't
+                      bounced to login before Supabase auth has hydrated */}
+                  <Route path="/checkout/success" element={<CheckoutSuccessPage />} />
+                  <Route path="/checkout/failed" element={<CheckoutFailedPage />} />
 
                   {/* Protected routes (must be logged in) */}
                   <Route element={<ProtectedRoute />}>
