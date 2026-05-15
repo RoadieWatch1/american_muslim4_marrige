@@ -7,12 +7,19 @@
 //
 // CCBill support confirmed: both Silver and Gold monthly subscriptions should
 // use subaccount 0000 with dynamic pricing to set the amount per plan.
+//
+// Passthrough parameters:
+// We send the Supabase user id and selected tier to CCBill as query params.
+// CCBill returns passthrough params to Webhooks with an X- prefix.
+// Example:
+//   sent:     supabaseUserId=abc-123
+//   webhook:  X-supabaseUserId=abc-123
 // ─────────────────────────────────────────────────────────────────────────────
 
 const CCBILL_CONFIG = {
   clientAccnum: "955247",
-  clientSubacc: "0000",               // recurring subscription subaccount
-  currencyCode: "840",                // USD
+  clientSubacc: "0000", // recurring subscription subaccount
+  currencyCode: "840", // USD
 
   // The Flex ID for the recurring payment flow (from CCBill Admin → FlexForms)
   flexId: "03ff568e-0540-40a0-9271-bb564caa9029",
@@ -27,17 +34,24 @@ const CCBILL_CONFIG = {
   //
   // IMPORTANT: Dynamic Pricing must be enabled on the FlexForms payment flow
   // in CCBill Admin, or the request will fail even with a valid digest.
+  //
+  // IMPORTANT: Passthrough parameters are not included in this digest.
 } as const;
 
 export type PaidTier = "silver" | "gold";
 
 interface PlanPricing {
-  initialPrice: string;   // e.g. "19.00"
-  initialPeriod: string;  // days, e.g. "30"
+  initialPrice: string; // e.g. "19.00"
+  initialPeriod: string; // days, e.g. "30"
   recurringPrice: string; // e.g. "19.00"
   recurringPeriod: string; // days, e.g. "30"
-  numRebills: string;     // "99" = indefinite recurring
-  formDigest: string;     // pre-computed MD5 digest (see above)
+  numRebills: string; // "99" = indefinite recurring
+  formDigest: string; // pre-computed MD5 digest
+}
+
+interface BuildCheckoutUrlOptions {
+  supabaseUserId: string;
+  email?: string | null;
 }
 
 export const PLAN_PRICING: Record<PaidTier, PlanPricing> = {
@@ -63,9 +77,19 @@ export const PLAN_PRICING: Record<PaidTier, PlanPricing> = {
  * Builds the CCBill FlexForms dynamic pricing checkout URL.
  * Open this as a top-level navigation (window.open or window.location.href).
  * CCBill blocks iframe embedding (X-Frame-Options).
+ *
+ * The supabaseUserId and tier are passthrough fields used later by the
+ * CCBill webhook to update the correct Supabase profile after payment.
  */
-export function buildCheckoutUrl(tier: PaidTier): string {
+export function buildCheckoutUrl(
+  tier: PaidTier,
+  options: BuildCheckoutUrlOptions
+): string {
   const plan = PLAN_PRICING[tier];
+
+  if (!options.supabaseUserId) {
+    throw new Error("Missing Supabase user ID for CCBill checkout.");
+  }
 
   const params = new URLSearchParams({
     clientAccnum: CCBILL_CONFIG.clientAccnum,
@@ -77,7 +101,18 @@ export function buildCheckoutUrl(tier: PaidTier): string {
     numRebills: plan.numRebills,
     currencyCode: CCBILL_CONFIG.currencyCode,
     formDigest: plan.formDigest,
+
+    // CCBill passthrough params.
+    // Register these in CCBill Admin later for better reporting/consistency:
+    //   supabaseUserId
+    //   requestedTier
+    supabaseUserId: options.supabaseUserId,
+    requestedTier: tier,
   });
+
+  if (options.email) {
+    params.set("customerEmail", options.email);
+  }
 
   const url = `https://api.ccbill.com/wap-frontflex/flexforms/${CCBILL_CONFIG.flexId}?${params.toString()}`;
 
@@ -98,7 +133,7 @@ export const CCBILL_RETURN_URLS = {
 
 // ── Legacy widget config (kept for reference, no longer used) ──────────────
 // The widget approach used a <script class="CCBillWidget{flexId}_{formNumber}">
-// but does not support dynamic pricing. We now use iframe-embedded FlexForms URLs.
+// but does not support dynamic pricing. We now use top-level FlexForms URLs.
 export const CCBILL_WIDGET = {
   scriptSrc: "https://images.ccbill.com/flexforms2/ccbill-widget-live.js",
   silver: {

@@ -85,7 +85,7 @@ export default function Pricing() {
   const navigate = useNavigate();
   const [loading, setLoading] = useState<string | null>(null);
 
-  const handleSubscribe = (planId: null | 'silver' | 'gold', tierName: string) => {
+  const handleSubscribe = async (planId: null | 'silver' | 'gold', tierName: string) => {
     if (!user) {
       toast({
         title: 'Sign in required',
@@ -99,9 +99,11 @@ export default function Pricing() {
     if (!planId) return;
 
     setLoading(tierName);
-    startCheckout(planId);
-    // CCBill redirect is synchronous — reset loading in case user cancels back
-    setTimeout(() => setLoading(null), 3000);
+    try {
+      await startCheckout(planId);
+    } finally {
+      setLoading(null);
+    }
   };
 
   const currentTier = profile?.subscription_tier || 'basic';

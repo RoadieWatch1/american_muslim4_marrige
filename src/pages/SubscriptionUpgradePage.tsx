@@ -4,7 +4,7 @@ import { Button } from '@/components/ui/Button';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
-import { buildCheckoutUrl } from '@/lib/ccbill';
+import { startCheckout } from '@/lib/startCheckout';
 import { PaymentMethodsNotice } from '@/components/billing/PaymentMethodsNotice';
 
 type PlanId = 'free' | 'silver' | 'gold';
@@ -147,8 +147,7 @@ export default function SubscriptionUpgradePage() {
 
       // Paid plans: launch CCBill checkout as top-level navigation
       if (planId === "silver" || planId === "gold") {
-        const url = buildCheckoutUrl(planId);
-        window.open(url, "_blank");
+        await startCheckout(planId);
         setLoadingPlanId(null);
         return;
       }
