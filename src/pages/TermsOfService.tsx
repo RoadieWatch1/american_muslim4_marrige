@@ -14,7 +14,7 @@ export default function TermsOfService() {
           <h1 className="mt-3 text-3xl sm:text-4xl font-bold text-gray-900">
             Terms of Service
           </h1>
-          <p className="mt-2 text-sm text-gray-500">Last updated: March 2026</p>
+          <p className="mt-2 text-sm text-gray-500">Last updated: May 2026</p>
         </div>
 
         <div className="prose prose-gray max-w-none">
@@ -55,10 +55,36 @@ export default function TermsOfService() {
             to host, display, and process it for operating the service.
           </p>
           <p>
-            By uploading any photo, video, or other media content to the platform, you grant American
-            Muslim 4 Marriage a non-exclusive, royalty-free, worldwide license to download, stream,
-            store, display, publish, and distribute such content solely for the purpose of operating
-            and providing the platform's services.
+            By uploading photos, videos, profile text, or other content to AM4M, you grant American
+            Muslim 4 Marriage a non-exclusive, royalty-free, worldwide license to host, store,
+            reproduce, display, transmit, publish, and distribute that content solely as needed to
+            operate, provide, secure, and improve the platform's matchmaking services. This includes
+            displaying your profile photo, profile name or kunya, and selected profile details to
+            other users within AM4M, including on the homepage, profile discovery areas, match
+            listings, and other on-platform features, according to your profile visibility and
+            account settings.
+          </p>
+          <p>
+            AM4M will not use your profile photo, profile name or kunya, likeness, testimonial,
+            match story, or other identifying content for social media, advertising, paid
+            promotions, featured-member posts, website promotions, success stories, or other
+            marketing purposes outside the normal operation of the platform unless you provide
+            explicit consent.
+          </p>
+          <p>
+            If you provide explicit promotional consent, you grant AM4M a non-exclusive,
+            royalty-free, worldwide license to use your approved profile photo, profile name or
+            kunya, and other approved content in AM4M social media posts, website promotions,
+            advertisements, featured-member posts, success stories, and other marketing materials.
+            This optional promotional use may provide additional visibility for your profile and may
+            help bring more attention to your profile while you are looking for a compatible spouse.
+            AM4M may select opted-in users at random or at AM4M's discretion for promotional
+            features. Promotional use is optional and may be revoked at any time for future use.
+            Revocation does not affect uses made while consent was active or material already
+            posted, shared, cached, screenshotted, reposted, distributed to third parties, or
+            otherwise no longer reasonably within AM4M's control. AM4M does not guarantee that
+            promotional profile visibility will result in more profile views, messages, matches,
+            engagements, marriages, or any specific outcome.
           </p>
 
           <h2>6. Disclaimers</h2>

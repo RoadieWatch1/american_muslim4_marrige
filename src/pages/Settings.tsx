@@ -20,7 +20,7 @@ import {
   SelectValue,
 } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Bell, Mail, MessageSquare, Save } from 'lucide-react';
+import { ArrowLeft, Bell, Mail, MessageSquare, Save, ShieldCheck } from 'lucide-react';
 import { TwoFactorSetup } from '@/components/settings/TwoFactorSetup';
 import BillingManagement from '@/components/settings/BillingManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -83,6 +83,9 @@ export default function Settings() {
   const [preferences, setPreferences] =
     useState<NotificationPreferences>(DEFAULT_PREFS);
 
+  const [allowPromotionalUse, setAllowPromotionalUse] = useState(false);
+  const [promotionalUseSaving, setPromotionalUseSaving] = useState(false);
+
   useEffect(() => {
     if (!user?.id) return;
     let mounted = true;
@@ -92,7 +95,7 @@ export default function Settings() {
         setLoading(true);
         const { data, error } = await supabase
           .from('profiles')
-          .select(SELECT_PREFS)
+          .select(`${SELECT_PREFS}, allow_promotional_profile_use`)
           .eq('id', user.id)
           .single();
 
@@ -105,6 +108,7 @@ export default function Settings() {
             notification_frequency:
               (data.notification_frequency as Frequency) ?? 'instant',
           }));
+          setAllowPromotionalUse(Boolean((data as any).allow_promotional_profile_use));
           setDirty(false);
         }
       } catch (err: any) {
@@ -156,6 +160,55 @@ export default function Settings() {
         description: err?.message ?? 'Failed to save. Please try again.',
         variant: 'destructive',
       });
+    }
+  };
+
+  // Promotional-use opt-in: writes the boolean and the appropriate
+  // consent/revocation timestamp atomically. Default is false; turning it
+  // off again later stamps revoked_at without clearing consented_at, so the
+  // audit trail of the most recent grant + revocation is preserved.
+  const setPromotionalConsent = async (checked: boolean) => {
+    if (!user?.id) return;
+
+    const prev = allowPromotionalUse;
+    setAllowPromotionalUse(checked);
+    setPromotionalUseSaving(true);
+
+    const nowIso = new Date().toISOString();
+    const payload: Record<string, any> = {
+      allow_promotional_profile_use: checked,
+      updated_at: nowIso,
+    };
+    if (checked) {
+      payload.promotional_profile_use_consented_at = nowIso;
+    } else {
+      payload.promotional_profile_use_revoked_at = nowIso;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('profiles')
+        .update(payload)
+        .eq('id', user.id);
+
+      if (error) throw error;
+
+      toast({
+        title: checked ? 'Promotional use enabled' : 'Promotional use turned off',
+        description: checked
+          ? 'You may now be featured in AM4M promotional materials. You can revoke this at any time.'
+          : 'AM4M will not use your profile in new promotional materials going forward.',
+      });
+    } catch (err: any) {
+      console.error('Error saving promotional consent:', err);
+      setAllowPromotionalUse(prev);
+      toast({
+        title: 'Error',
+        description: err?.message ?? 'Failed to save. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPromotionalUseSaving(false);
     }
   };
 
@@ -234,10 +287,14 @@ export default function Settings() {
         </div>
 
         <Tabs defaultValue="notifications" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-2">
+          <TabsList className="grid w-full grid-cols-3">
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="w-4 h-4" />
               Notifications
+            </TabsTrigger>
+            <TabsTrigger value="privacy" className="flex items-center gap-2">
+              <ShieldCheck className="w-4 h-4" />
+              Privacy
             </TabsTrigger>
             <TabsTrigger value="security" className="flex items-center gap-2">
               Security
@@ -463,6 +520,50 @@ export default function Settings() {
                 {saving ? 'Saving...' : dirty ? 'Save Preferences' : 'Saved'}
               </Button>
             </div>
+          </TabsContent>
+
+          <TabsContent value="privacy" className="space-y-6">
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-emerald-600" />
+                  Promotional Profile Visibility
+                </CardTitle>
+                <CardDescription>
+                  Optional. Off by default. You can turn this on or off at any time.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <div className="flex items-start justify-between gap-4">
+                  <div className="space-y-1">
+                    <Label htmlFor="promotional-use" className="text-base font-medium">
+                      Allow promotional use of my profile
+                    </Label>
+                    <p className="text-sm text-gray-600 leading-relaxed">
+                      I want more visibility for my profile and allow AM4M to feature my profile
+                      photo and profile name/kunya in AM4M social media posts, website promotions,
+                      featured-member posts, ads, and other marketing materials. I understand this
+                      may bring more attention to my profile while I am looking for a compatible
+                      spouse, but AM4M does not guarantee views, messages, matches, marriage, or
+                      any specific result. I can revoke consent for future use at any time.
+                    </p>
+                  </div>
+                  <Switch
+                    id="promotional-use"
+                    checked={allowPromotionalUse}
+                    disabled={promotionalUseSaving}
+                    onCheckedChange={setPromotionalConsent}
+                  />
+                </div>
+
+                <p className="text-xs text-gray-500">
+                  Revocation stops future promotional use, but materials already posted, shared,
+                  cached, screenshotted, reposted, or distributed by third parties may not be
+                  fully removable.
+                </p>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           <TabsContent value="security" className="space-y-6">

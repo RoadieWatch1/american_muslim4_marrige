@@ -14,7 +14,7 @@ export default function PrivacyPolicy() {
           <h1 className="mt-3 text-3xl sm:text-4xl font-bold text-gray-900">
             Privacy Policy
           </h1>
-          <p className="mt-2 text-sm text-gray-500">Last updated: Jan 2025</p>
+          <p className="mt-2 text-sm text-gray-500">Last updated: May 2026</p>
         </div>
 
         <div className="prose prose-gray max-w-none">
@@ -33,6 +33,7 @@ export default function PrivacyPolicy() {
           <h2>2. How We Use Information</h2>
           <ul>
             <li>To provide and improve the service</li>
+            <li>To display your profile to other users for matchmaking, as described in "Profile Visibility Within AM4M" below</li>
             <li>To maintain safety, prevent abuse, and enforce guidelines</li>
             <li>To communicate with you about important updates</li>
           </ul>
@@ -46,31 +47,67 @@ export default function PrivacyPolicy() {
             <li>Legal authorities if required by law or to protect safety</li>
           </ul>
 
-          <h2>4. Your Controls</h2>
+          <h2>4. Profile Visibility Within AM4M</h2>
+          <p>
+            When you create a profile and make it visible on AM4M, your profile photo, profile name
+            or kunya, age, location, and selected profile details may be displayed within the AM4M
+            platform, including the homepage, profile discovery areas, match listings, and other
+            on-platform features designed to help users find compatible matches. This use is part of
+            operating and providing the matchmaking service.
+          </p>
+
+          <h2>5. Promotional Profile Visibility</h2>
+          <p>
+            AM4M may offer users the option to receive additional profile visibility by allowing AM4M
+            to feature their profile photo and profile name or kunya in AM4M social media posts,
+            website promotions, featured-member posts, ads, and other marketing materials. This
+            optional promotional feature may help bring more attention to your profile and may
+            increase the chance that other interested users notice you while you are looking for a
+            compatible spouse.
+          </p>
+          <p>
+            Promotional use is completely optional. AM4M will not use your profile photo, profile
+            name or kunya, likeness, testimonial, match story, or other identifying profile content
+            for social media, advertising, paid promotions, featured-member posts, website
+            promotions, or other marketing purposes unless you provide explicit consent.
+          </p>
+          <p>
+            If you opt in, AM4M may select your profile at random or at AM4M's discretion for
+            promotional features. You may revoke your consent at any time for future use by
+            contacting AM4M or through any promotional-use controls we may later provide. Revocation
+            stops future promotional use, but materials already posted, shared, saved, cached,
+            screenshotted, reposted, or distributed by third parties may not be fully removable.
+          </p>
+          <p>
+            AM4M does not guarantee that promotional profile visibility will result in more profile
+            views, messages, matches, engagements, marriages, or any specific outcome.
+          </p>
+
+          <h2>6. Your Controls</h2>
           <ul>
             <li>You can update your profile information from your account settings.</li>
             <li>You can control visibility and interaction settings where available.</li>
             <li>You may request deletion of your account (subject to legal/safety retention needs).</li>
           </ul>
 
-          <h2>5. Data Security</h2>
+          <h2>7. Data Security</h2>
           <p>
             We take reasonable measures to protect your data. However, no system is 100% secure.
           </p>
 
-          <h2>6. Data Retention</h2>
+          <h2>8. Data Retention</h2>
           <p>
             We retain data as needed to provide the service and meet legal, safety, and operational
             requirements. When no longer needed, we delete or anonymize data where feasible.
           </p>
 
-          <h2>7. Changes to This Policy</h2>
+          <h2>9. Changes to This Policy</h2>
           <p>
             We may update this policy from time to time. Continued use after updates means you accept
             the revised policy.
           </p>
 
-          <h2>8. Contact</h2>
+          <h2>10. Contact</h2>
           <p>
             For privacy questions, contact us via the Contact Us option in the footer.
           </p>
