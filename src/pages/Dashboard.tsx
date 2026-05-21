@@ -107,10 +107,30 @@ export default function Dashboard() {
     return "bg-gray-50";
   }, [isGold, isSilver]);
 
+  const isPaused = profile?.is_active === false && profile?.paused_at != null;
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50">
       <div className="max-w-7xl mx-auto px-4 py-8">
         <EmailVerificationBanner />
+
+        {isPaused && (
+          <div className="mb-6 rounded-md border border-amber-300 bg-amber-50 p-4 flex items-start gap-3">
+            <div className="flex-1">
+              <p className="font-semibold text-amber-900">Your account is paused</p>
+              <p className="text-sm text-amber-800">
+                You won't appear in new matches. Existing conversations are unaffected.
+              </p>
+            </div>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => navigate('/settings?tab=account')}
+            >
+              Resume
+            </Button>
+          </div>
+        )}
 
         <div className="mb-8">
           <div className="flex items-center gap-3 mb-2">

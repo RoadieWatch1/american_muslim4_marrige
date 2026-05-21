@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useAuth } from '@/contexts/AuthContext';
 import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/Button';
 import { Switch } from '@/components/ui/switch';
 import { Label } from '@/components/ui/label';
+import { Input } from '@/components/ui/input';
 import {
   Card,
   CardContent,
@@ -19,8 +20,30 @@ import {
   SelectTrigger,
   SelectValue,
 } from '@/components/ui/select';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { useToast } from '@/hooks/use-toast';
-import { ArrowLeft, Bell, Mail, MessageSquare, Save, ShieldCheck } from 'lucide-react';
+import {
+  ArrowLeft,
+  Bell,
+  Mail,
+  MessageSquare,
+  Save,
+  ShieldCheck,
+  UserCog,
+  PauseCircle,
+  Trash2,
+  AlertCircle,
+} from 'lucide-react';
 import { TwoFactorSetup } from '@/components/settings/TwoFactorSetup';
 import BillingManagement from '@/components/settings/BillingManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -86,6 +109,36 @@ export default function Settings() {
   const [allowPromotionalUse, setAllowPromotionalUse] = useState(false);
   const [promotionalUseSaving, setPromotionalUseSaving] = useState(false);
 
+  // Account lifecycle (pause + delete)
+  const [isActive, setIsActive] = useState(true);
+  const [pausedAt, setPausedAt] = useState<string | null>(null);
+  const [subscriptionStatus, setSubscriptionStatus] = useState<string | null>(null);
+  const [subscriptionCancelAtPeriodEnd, setSubscriptionCancelAtPeriodEnd] = useState<boolean>(false);
+  const [pauseSaving, setPauseSaving] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleteConfirmText, setDeleteConfirmText] = useState('');
+  const [deleting, setDeleting] = useState(false);
+
+  // Tabs synced with ?tab= query param so deep-links from inside the page work.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tabFromUrl = searchParams.get('tab');
+  const allowedTabs = ['notifications', 'privacy', 'security', 'account'] as const;
+  const initialTab = (allowedTabs as readonly string[]).includes(tabFromUrl ?? '')
+    ? (tabFromUrl as string)
+    : 'notifications';
+  const [activeTab, setActiveTab] = useState<string>(initialTab);
+
+  const onTabChange = (next: string) => {
+    setActiveTab(next);
+    const sp = new URLSearchParams(searchParams);
+    sp.set('tab', next);
+    setSearchParams(sp, { replace: true });
+  };
+
+  const isSelfPaused = isActive === false && pausedAt !== null;
+  const isAdminDisabled = isActive === false && pausedAt === null;
+  const hasActiveSub = subscriptionStatus === 'active' && subscriptionCancelAtPeriodEnd !== true;
+
   useEffect(() => {
     if (!user?.id) return;
     let mounted = true;
@@ -95,7 +148,9 @@ export default function Settings() {
         setLoading(true);
         const { data, error } = await supabase
           .from('profiles')
-          .select(`${SELECT_PREFS}, allow_promotional_profile_use`)
+          .select(
+            `${SELECT_PREFS}, allow_promotional_profile_use, is_active, paused_at, subscription_status, subscription_cancel_at_period_end`,
+          )
           .eq('id', user.id)
           .single();
 
@@ -108,7 +163,12 @@ export default function Settings() {
             notification_frequency:
               (data.notification_frequency as Frequency) ?? 'instant',
           }));
-          setAllowPromotionalUse(Boolean((data as any).allow_promotional_profile_use));
+          const row = data as any;
+          setAllowPromotionalUse(Boolean(row.allow_promotional_profile_use));
+          setIsActive(row.is_active !== false);
+          setPausedAt(row.paused_at ?? null);
+          setSubscriptionStatus(row.subscription_status ?? null);
+          setSubscriptionCancelAtPeriodEnd(row.subscription_cancel_at_period_end === true);
           setDirty(false);
         }
       } catch (err: any) {
@@ -212,6 +272,113 @@ export default function Settings() {
     }
   };
 
+  // Pause / resume the user's own account.
+  // Pause: is_active=false, paused_at=now()
+  // Resume: is_active=true, paused_at=null, guarded by paused_at IS NOT NULL
+  //         so admin-disabled users (paused_at IS NULL) cannot self-reactivate.
+  const setPauseState = async (shouldPause: boolean) => {
+    if (!user?.id) return;
+
+    const prevActive = isActive;
+    const prevPausedAt = pausedAt;
+
+    setPauseSaving(true);
+    // optimistic
+    setIsActive(!shouldPause);
+    setPausedAt(shouldPause ? new Date().toISOString() : null);
+
+    try {
+      if (shouldPause) {
+        const nowIso = new Date().toISOString();
+        const { error } = await supabase
+          .from('profiles')
+          .update({ is_active: false, paused_at: nowIso, updated_at: nowIso })
+          .eq('id', user.id);
+        if (error) throw error;
+        toast({
+          title: 'Account paused',
+          description:
+            "You won't appear in new matches. Existing conversations stay. Resume any time.",
+        });
+      } else {
+        const { error, data } = await supabase
+          .from('profiles')
+          .update({
+            is_active: true,
+            paused_at: null,
+            updated_at: new Date().toISOString(),
+          })
+          .eq('id', user.id)
+          .not('paused_at', 'is', null)
+          .select('id');
+        if (error) throw error;
+        if (!data || data.length === 0) {
+          // 0 rows updated => paused_at was already null, i.e. admin-disabled.
+          throw new Error('This account cannot be resumed from here. Contact support.');
+        }
+        toast({
+          title: 'Account resumed',
+          description: 'Welcome back. You will appear in new matches again.',
+        });
+      }
+    } catch (err: any) {
+      console.error('Error toggling pause:', err);
+      setIsActive(prevActive);
+      setPausedAt(prevPausedAt);
+      toast({
+        title: 'Error',
+        description: err?.message ?? 'Failed to update account state. Please try again.',
+        variant: 'destructive',
+      });
+    } finally {
+      setPauseSaving(false);
+    }
+  };
+
+  // Permanently delete the user's account.
+  const handleDelete = async () => {
+    if (!user?.id || deleting) return;
+    setDeleting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('delete-account');
+
+      if (error || !data?.ok) {
+        const reason = (data?.error as string | undefined) ?? error?.message;
+        if (reason === 'cancel_subscription_first') {
+          toast({
+            title: 'Cancel your subscription first',
+            description:
+              'Open the Billing tab and cancel your subscription before deleting your account.',
+            variant: 'destructive',
+          });
+        } else {
+          toast({
+            title: 'Could not delete account',
+            description: reason ?? 'Please try again later.',
+            variant: 'destructive',
+          });
+        }
+        setDeleting(false);
+        return;
+      }
+
+      await supabase.auth.signOut();
+      toast({
+        title: 'Account deleted',
+        description: 'Your account and personal data have been removed.',
+      });
+      navigate('/');
+    } catch (err: any) {
+      console.error('handleDelete error:', err);
+      toast({
+        title: 'Could not delete account',
+        description: err?.message ?? 'Please try again later.',
+        variant: 'destructive',
+      });
+      setDeleting(false);
+    }
+  };
+
   // Save button (bulk save current state)
   const savePreferences = async () => {
     if (!user?.id) return;
@@ -286,8 +453,8 @@ export default function Settings() {
           <p className="text-gray-600 mt-2">Manage your account, notifications, and billing</p>
         </div>
 
-        <Tabs defaultValue="notifications" className="space-y-6">
-          <TabsList className="grid w-full grid-cols-3">
+        <Tabs value={activeTab} onValueChange={onTabChange} className="space-y-6">
+          <TabsList className="grid w-full grid-cols-4">
             <TabsTrigger value="notifications" className="flex items-center gap-2">
               <Bell className="w-4 h-4" />
               Notifications
@@ -298,6 +465,10 @@ export default function Settings() {
             </TabsTrigger>
             <TabsTrigger value="security" className="flex items-center gap-2">
               Security
+            </TabsTrigger>
+            <TabsTrigger value="account" className="flex items-center gap-2">
+              <UserCog className="w-4 h-4" />
+              Account
             </TabsTrigger>
             {/* <TabsTrigger value="billing" className="flex items-center gap-2">
               <CreditCard className="w-4 h-4" />
@@ -568,6 +739,155 @@ export default function Settings() {
 
           <TabsContent value="security" className="space-y-6">
             <TwoFactorSetup />
+          </TabsContent>
+
+          <TabsContent value="account" className="space-y-6">
+            {/* Pause / Resume */}
+            {isAdminDisabled ? (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <AlertCircle className="w-5 h-5 text-red-600" />
+                    Your account is currently disabled
+                  </CardTitle>
+                  <CardDescription>
+                    This account has been disabled by AM4M. Please contact support if you believe
+                    this was a mistake.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <PauseCircle className="w-5 h-5 text-emerald-600" />
+                    Pause your account
+                  </CardTitle>
+                  <CardDescription>
+                    Take a break. You won't appear in new matches, but your existing conversations
+                    and matches stay. You can resume any time.
+                  </CardDescription>
+                </CardHeader>
+
+                <CardContent className="space-y-4">
+                  <div className="flex items-start justify-between gap-4">
+                    <div className="space-y-1">
+                      <Label htmlFor="pause-account" className="text-base font-medium">
+                        {isSelfPaused ? 'Account is paused' : 'Pause my account'}
+                      </Label>
+                      <p className="text-sm text-gray-600">
+                        {isSelfPaused
+                          ? "You're hidden from new discovery. Turn this off to come back."
+                          : 'Hides you from new discovery. Existing matches and messages are preserved.'}
+                      </p>
+                    </div>
+                    <Switch
+                      id="pause-account"
+                      checked={isSelfPaused}
+                      disabled={pauseSaving}
+                      onCheckedChange={setPauseState}
+                    />
+                  </div>
+
+                  {isSelfPaused && (
+                    <Alert>
+                      <PauseCircle className="h-4 w-4" />
+                      <AlertTitle>You are paused</AlertTitle>
+                      <AlertDescription>
+                        Your subscription (if any) is not affected by pause. Manage it in the
+                        Billing section.
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </CardContent>
+              </Card>
+            )}
+
+            {/* Delete account */}
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Trash2 className="w-5 h-5 text-red-600" />
+                  Delete your account
+                </CardTitle>
+                <CardDescription className="text-red-700">
+                  Permanent and not recoverable.
+                </CardDescription>
+              </CardHeader>
+
+              <CardContent className="space-y-4">
+                <p className="text-sm text-gray-700 leading-relaxed">
+                  Deleting your account permanently removes your profile, photos, likes,
+                  introduction requests, matches, and the messages tied to those matches. You
+                  cannot undo this. If you come back, you'll need to sign up again from scratch.
+                </p>
+
+                {hasActiveSub ? (
+                  <Alert variant="destructive">
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Cancel your subscription first</AlertTitle>
+                    <AlertDescription className="space-y-2">
+                      <p>
+                        You still have an active subscription. Cancel it before deleting your
+                        account so you aren't billed again.
+                      </p>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => navigate('/billing')}
+                      >
+                        Go to Billing
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                ) : null}
+
+                <Button
+                  variant="destructive"
+                  onClick={() => {
+                    setDeleteConfirmText('');
+                    setDeleteOpen(true);
+                  }}
+                  disabled={hasActiveSub || deleting}
+                >
+                  <Trash2 className="w-4 h-4 mr-2" />
+                  Delete my account
+                </Button>
+              </CardContent>
+            </Card>
+
+            <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Delete your account permanently?</AlertDialogTitle>
+                  <AlertDialogDescription className="space-y-2">
+                    <span className="block">
+                      This will remove your profile, photos, likes, introductions, matches, and
+                      the messages tied to those matches. This cannot be undone.
+                    </span>
+                    <span className="block font-medium">
+                      Type <span className="font-mono">DELETE</span> below to confirm.
+                    </span>
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <Input
+                  value={deleteConfirmText}
+                  onChange={(e) => setDeleteConfirmText(e.target.value)}
+                  placeholder="DELETE"
+                  autoFocus
+                />
+                <AlertDialogFooter>
+                  <AlertDialogCancel disabled={deleting}>Cancel</AlertDialogCancel>
+                  <AlertDialogAction
+                    onClick={handleDelete}
+                    disabled={deleting || deleteConfirmText !== 'DELETE'}
+                    className="bg-red-600 hover:bg-red-700"
+                  >
+                    {deleting ? 'Deleting...' : 'Permanently delete'}
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
           </TabsContent>
 
           {/* <TabsContent value="billing" className="space-y-6">

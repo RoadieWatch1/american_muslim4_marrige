@@ -254,7 +254,10 @@ export default function Messages() {
       const conversationsData: Conversation[] = allMatches.map((match: any) => {
         const otherId = otherUserIdByMatch.get(match.id)!;
         const profile = profileMap.get(otherId);
-        const displayName = profile?.first_name || 'Member';
+        // If the profile is missing entirely, the counterparty has deleted
+        // their account. Show "Deleted user" instead of the generic "Member"
+        // fallback so the surviving party understands what happened.
+        const displayName = profile ? (profile.first_name || 'Member') : 'Deleted user';
 
         return {
           id: match.id,
