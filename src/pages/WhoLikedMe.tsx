@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
 import type { PublicProfile } from '@/components/profile/PublicProfileView';
+import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
 import { notifyNewLike } from '@/lib/notifications';
 
 type LikerProfile = {
@@ -19,6 +20,7 @@ type LikerProfile = {
   state: string | null;
   age: number | null;
   photoUrl: string | null;
+  subscriptionTier: string | null;
 };
 
 export default function WhoLikedMe() {
@@ -84,6 +86,7 @@ export default function WhoLikedMe() {
           state: p?.state ?? null,
           age,
           photoUrl: p?.profile_photo_url ?? null,
+          subscriptionTier: p?.subscription_tier ?? null,
         };
       });
 
@@ -295,11 +298,14 @@ export default function WhoLikedMe() {
                   className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
                   title="View full profile"
                 >
-                  <p className="font-semibold text-gray-900 hover:text-teal-700 underline-offset-2 hover:underline">
-                    {liker.firstName ?? 'Member'}
-                    {liker.age ? (
-                      <span className="font-normal text-gray-500">, {liker.age}</span>
-                    ) : null}
+                  <p className="font-semibold text-gray-900 hover:text-teal-700 underline-offset-2 hover:underline flex items-center gap-2 flex-wrap">
+                    <span>
+                      {liker.firstName ?? 'Member'}
+                      {liker.age ? (
+                        <span className="font-normal text-gray-500">, {liker.age}</span>
+                      ) : null}
+                    </span>
+                    <SubscriptionBadge tier={liker.subscriptionTier} />
                   </p>
                   {(liker.city || liker.state) && (
                     <p className="text-sm text-gray-500 truncate">

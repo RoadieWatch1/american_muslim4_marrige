@@ -8,6 +8,7 @@ import { toast } from 'sonner';
 import { formatDistanceToNow } from 'date-fns';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
 import type { PublicProfile } from '@/components/profile/PublicProfileView';
+import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
 import { notifyNewLike } from '@/lib/notifications';
 
 type PassedProfile = {
@@ -19,6 +20,7 @@ type PassedProfile = {
   state: string | null;
   age: number | null;
   photoUrl: string | null;
+  subscriptionTier: string | null;
 };
 
 export default function LookBack() {
@@ -85,6 +87,7 @@ export default function LookBack() {
           state: p?.state ?? null,
           age,
           photoUrl: p?.profile_photo_url ?? null,
+          subscriptionTier: p?.subscription_tier ?? null,
         };
       });
 
@@ -266,11 +269,14 @@ export default function LookBack() {
                   className="flex-1 min-w-0 text-left hover:opacity-80 transition-opacity"
                   title="View full profile"
                 >
-                  <p className="font-semibold text-gray-900 hover:text-teal-700 underline-offset-2 hover:underline">
-                    {profile.firstName ?? 'Member'}
-                    {profile.age ? (
-                      <span className="font-normal text-gray-500">, {profile.age}</span>
-                    ) : null}
+                  <p className="font-semibold text-gray-900 hover:text-teal-700 underline-offset-2 hover:underline flex items-center gap-2 flex-wrap">
+                    <span>
+                      {profile.firstName ?? 'Member'}
+                      {profile.age ? (
+                        <span className="font-normal text-gray-500">, {profile.age}</span>
+                      ) : null}
+                    </span>
+                    <SubscriptionBadge tier={profile.subscriptionTier} />
                   </p>
                   {(profile.city || profile.state) && (
                     <p className="text-sm text-gray-500 truncate">

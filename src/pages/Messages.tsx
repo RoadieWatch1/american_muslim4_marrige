@@ -14,6 +14,7 @@ type BasicProfile = {
   state: string | null;
   dob: string | null;
   profile_photo_url: string | null;
+  subscription_tier?: string | null;
 };
 
 type WaliLink = {
@@ -267,6 +268,7 @@ export default function Messages() {
             firstName: displayName,
             lastName: null,
             photos: profile?.profile_photo_url ? [profile.profile_photo_url] : [],
+            subscriptionTier: profile?.subscription_tier ?? null,
           },
           last_message: lastMessageByConv.get(match.id) ?? undefined,
           unread_count: unreadByConv.get(match.id) ?? 0,

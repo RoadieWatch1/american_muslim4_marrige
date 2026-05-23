@@ -4,6 +4,7 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/Badge';
 import { formatDistanceToNow } from 'date-fns';
 import { Sparkles } from 'lucide-react';
+import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -89,6 +90,7 @@ export function ConversationList({
                   <span className="text-xs font-medium text-foreground truncate max-w-[64px]">
                     {name}
                   </span>
+                  <SubscriptionBadge tier={conv.other_user.subscriptionTier} size="xs" />
                 </button>
               );
             })}
@@ -126,10 +128,13 @@ export function ConversationList({
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 text-left min-w-0">
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="font-semibold truncate">{name}</span>
+                  <div className="flex items-center justify-between mb-1 gap-2">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <span className="font-semibold truncate">{name}</span>
+                      <SubscriptionBadge tier={conv.other_user.subscriptionTier} size="xs" />
+                    </div>
                     {conv.last_message && (
-                      <span className="text-xs text-muted-foreground">
+                      <span className="text-xs text-muted-foreground flex-shrink-0">
                         {formatDistanceToNow(
                           new Date(conv.last_message.created_at),
                           { addSuffix: true }

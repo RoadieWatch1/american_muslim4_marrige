@@ -487,6 +487,7 @@ export default function Discover() {
             : ['https://placehold.co/600x800?text=No+Photo'],
         verified: !!currentProfile.verified_badge,
         waliRequired: !!currentProfile.wali_required,
+        subscriptionTier: currentProfile.subscription_tier ?? null,
       }
     : null;
 

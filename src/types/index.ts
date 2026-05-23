@@ -26,6 +26,7 @@ export interface Profile {
   verified: boolean;
   photos: string[];
   languages: string[];
+  subscriptionTier?: string | null;
 }
 
 export interface Match {

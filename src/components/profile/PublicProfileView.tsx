@@ -2,6 +2,7 @@
 import React, { useMemo, useState } from "react";
 import { Button } from "@/components/ui/Button";
 import { CheckCircle, ShieldCheck, Video, Image as ImageIcon, Heart } from "lucide-react";
+import SubscriptionBadge from "@/components/profile/SubscriptionBadge";
 
 export type PublicProfile = {
   id: string;
@@ -36,6 +37,8 @@ export type PublicProfile = {
   // From RPC (single urls)
   profile_photo_url?: string | null;
   intro_video_url?: string | null;
+
+  subscription_tier?: string | null;
 };
 
 type MediaItem = {
@@ -152,6 +155,7 @@ export default function PublicProfileView({
 
         {/* Badges */}
         <div className="absolute top-3 left-3 flex gap-2">
+          <SubscriptionBadge tier={profile.subscription_tier} />
           {profile.verified_badge && (
             <span className="inline-flex items-center gap-1 rounded-full bg-white/90 px-3 py-1 text-xs font-semibold text-emerald-700 border">
               <CheckCircle className="h-4 w-4" />

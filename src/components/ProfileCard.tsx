@@ -1,6 +1,7 @@
 // src/components/ProfileCard.tsx
 import React from 'react';
 import { Badge } from './ui/Badge';
+import SubscriptionBadge from './profile/SubscriptionBadge';
 
 // Define only what the card needs, with relaxed string types for flexibility
 type ProfileForCard = {
@@ -15,6 +16,7 @@ type ProfileForCard = {
   photos: string[];
   verified: boolean;
   waliRequired: boolean;
+  subscriptionTier?: string | null;
 };
 
 interface ProfileCardProps {
@@ -53,6 +55,7 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
           className="w-full h-full object-cover"
         />
         <div className="absolute top-4 right-4 flex gap-2">
+          <SubscriptionBadge tier={profile.subscriptionTier} />
           {profile.verified && (
             <Badge variant="success">
               <span className="mr-1">✓</span>

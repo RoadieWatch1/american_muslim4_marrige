@@ -23,6 +23,7 @@ import { notifyNewMessage } from '@/lib/notifications';
 import { toast } from 'sonner';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
 import type { PublicProfile } from '@/components/profile/PublicProfileView';
+import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
 
 // same helper as in ConversationList
 const AVATAR_COLORS = [
@@ -351,8 +352,9 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
           className="flex-1 text-left hover:opacity-80 transition-opacity min-w-0"
           title="View full profile"
         >
-          <h3 className="font-semibold hover:text-teal-700 hover:underline underline-offset-2 truncate">
-            {displayName}
+          <h3 className="font-semibold hover:text-teal-700 hover:underline underline-offset-2 truncate flex items-center gap-2 flex-wrap">
+            <span className="truncate">{displayName}</span>
+            <SubscriptionBadge tier={conversation.other_user.subscriptionTier} />
           </h3>
           {isTyping && <p className="text-xs text-muted-foreground">typing...</p>}
         </button>
