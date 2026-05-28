@@ -21,14 +21,12 @@ import {
 import { SlidersHorizontal, Lock } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import type { DiscoverFilters, PracticeLevel } from '@/types';
+import { getActiveSubscriptionTier } from '@/lib/subscriptionAccess';
 
 interface FilterPanelProps {
   filters: DiscoverFilters;
   onFiltersChange: (filters: DiscoverFilters) => void;
 }
-
-type Tier = 'free' | 'silver' | 'gold';
-type WithTier = { subscription_tier?: Tier | null };
 
 // Your profiles table now has latitude/longitude
 type WithCoords = { latitude?: number | null; longitude?: number | null };
@@ -44,8 +42,7 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
     setLocalFilters(filters);
   }, [filters]);
 
-  const tier = ((profile as unknown as WithTier | undefined)?.subscription_tier ??
-    'free') as Tier;
+  const tier = getActiveSubscriptionTier(profile);
 
   const canUseSilver = tier === 'silver' || tier === 'gold';
   const canUseGold = tier === 'gold';

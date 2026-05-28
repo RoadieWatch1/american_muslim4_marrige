@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useState } from "react";
 import { useNavigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/Button";
 import { useAuth } from "@/contexts/AuthContext";
+import { getActiveSubscriptionTier } from "@/lib/subscriptionAccess";
 import {
   Bell,
   Heart,
@@ -58,12 +59,12 @@ export default function DashboardNav({
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // ✅ Normalize plan tier from profile
+  // ✅ Normalize plan tier from profile (respects status + expiry)
   const plan: PlanId = useMemo(() => {
-    const t = (profile?.subscription_tier ?? "free").toString().toLowerCase();
+    const t = getActiveSubscriptionTier(profile);
     if (t === "gold" || t === "silver" || t === "free") return t;
     return "free";
-  }, [profile?.subscription_tier]);
+  }, [profile]);
 
   const planBadge = useMemo(() => {
     if (plan === "gold") {

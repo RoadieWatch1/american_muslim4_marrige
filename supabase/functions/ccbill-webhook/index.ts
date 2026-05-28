@@ -57,12 +57,100 @@ function isPaidTier(value: string | null): value is "silver" | "gold" {
   return value === "silver" || value === "gold";
 }
 
+function parseAmount(value: string | null): number | null {
+  if (!value) return null;
+
+  const normalized = value.replace(/[^0-9.]/g, "");
+  if (!normalized) return null;
+
+  const amount = Number(normalized);
+  return Number.isFinite(amount) ? amount : null;
+}
+
+function resolveTierFromAmount(payload: CCBillPayload): "silver" | "gold" | null {
+  const amountRaw = pickString(payload, [
+    "accountingAmount",
+    "accounting_amount",
+    "amount",
+    "price",
+    "billedAmount",
+    "billed_amount",
+    "initialPrice",
+    "initial_price",
+    "recurringPrice",
+    "recurring_price",
+  ]);
+
+  const amount = parseAmount(amountRaw);
+
+  if (amount === 19) return "silver";
+  if (amount === 39) return "gold";
+
+  return null;
+}
+
 function parseDateToIso(value: string | null): string | null {
   if (!value) return null;
 
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
   return date.toISOString();
+}
+
+async function resolveProfileId(options: {
+  supabaseUserId: string | null;
+  customerEmail: string | null;
+  subscriptionId: string | null;
+}): Promise<{ profileId: string | null; error: string | null }> {
+  if (options.supabaseUserId) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", options.supabaseUserId)
+      .maybeSingle();
+
+    if (error) {
+      return { profileId: null, error: `Profile lookup by id failed: ${error.message}` };
+    }
+
+    if (data?.id) {
+      return { profileId: data.id as string, error: null };
+    }
+  }
+
+  if (options.customerEmail) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .ilike("email", options.customerEmail)
+      .maybeSingle();
+
+    if (error) {
+      return { profileId: null, error: `Profile lookup by email failed: ${error.message}` };
+    }
+
+    if (data?.id) {
+      return { profileId: data.id as string, error: null };
+    }
+  }
+
+  if (options.subscriptionId) {
+    const { data, error } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("ccbill_subscription_id", options.subscriptionId)
+      .maybeSingle();
+
+    if (error) {
+      return { profileId: null, error: `Profile lookup by subscription id failed: ${error.message}` };
+    }
+
+    if (data?.id) {
+      return { profileId: data.id as string, error: null };
+    }
+  }
+
+  return { profileId: null, error: null };
 }
 
 async function parseRequestBody(req: Request): Promise<CCBillPayload> {
@@ -185,7 +273,7 @@ Deno.serve(async (req) => {
 
     const requestedTier = isPaidTier(requestedTierRaw)
       ? requestedTierRaw
-      : null;
+      : resolveTierFromAmount(payload);
 
     const { data: insertedEvent, error: insertError } = await supabase
       .from("ccbill_webhook_events")
@@ -250,26 +338,122 @@ Deno.serve(async (req) => {
     }
 
     if (LOG_ONLY_EVENTS.has(eventType)) {
-      console.log(
-        `[CCBill Webhook] Log-only event ${eventType} for user ${supabaseUserId ?? "(unknown)"}; downgrade not implemented yet.`,
-      );
+      const resolvedProfile = await resolveProfileId({
+        supabaseUserId,
+        customerEmail,
+        subscriptionId,
+      });
+
+      if (resolvedProfile.error) {
+        await markProcessingError(auditId, resolvedProfile.error);
+        return new Response("OK", { status: 200 });
+      }
+
+      if (!resolvedProfile.profileId) {
+        await markProcessingError(
+          auditId,
+          `No matching profile found for ${eventType}. supabaseUserId=${supabaseUserId ?? "(missing)"}, customerEmail=${customerEmail ?? "(missing)"}, subscriptionId=${subscriptionId ?? "(missing)"}`,
+        );
+        return new Response("OK", { status: 200 });
+      }
+
+      const nowIso = new Date().toISOString();
+
+      if (eventType === "Cancellation") {
+        const parsedEndDate =
+          parseDateToIso(
+            pickString(payload, [
+              "expirationDate",
+              "expiration_date",
+              "inactiveDate",
+              "inactive_date",
+              "endDate",
+              "end_date",
+              "cancelDate",
+              "cancel_date",
+            ]),
+          ) ?? nowIso;
+
+        const { error: cancelUpdateError } = await supabase
+          .from("profiles")
+          .update({
+            subscription_status: "active",
+            cancel_at_period_end: true,
+            subscription_cancel_at_period_end: true,
+            subscription_end_date: parsedEndDate,
+            ccbill_last_event_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq("id", resolvedProfile.profileId);
+
+        if (cancelUpdateError) {
+          await markProcessingError(
+            auditId,
+            `Cancellation profile update failed: ${cancelUpdateError.message}`,
+          );
+          return new Response("OK", { status: 200 });
+        }
+
+        await markProcessed(auditId);
+        return new Response("OK", { status: 200 });
+      }
+
+      if (["Expiration", "Refund", "Chargeback", "Void"].includes(eventType)) {
+        const { error: stopAccessError } = await supabase
+          .from("profiles")
+          .update({
+            subscription_tier: "free",
+            subscription_status: "inactive",
+            cancel_at_period_end: false,
+            subscription_cancel_at_period_end: false,
+            subscription_end_date: nowIso,
+            ccbill_last_event_at: nowIso,
+            updated_at: nowIso,
+          })
+          .eq("id", resolvedProfile.profileId);
+
+        if (stopAccessError) {
+          await markProcessingError(
+            auditId,
+            `${eventType} profile update failed: ${stopAccessError.message}`,
+          );
+          return new Response("OK", { status: 200 });
+        }
+
+        await markProcessed(auditId);
+        return new Response("OK", { status: 200 });
+      }
+
       await markProcessed(auditId);
       return new Response("OK", { status: 200 });
     }
 
     if (ACTIVATING_EVENTS.has(eventType)) {
-      if (!supabaseUserId) {
+      const resolvedProfile = await resolveProfileId({
+        supabaseUserId,
+        customerEmail,
+        subscriptionId,
+      });
+
+      if (resolvedProfile.error) {
+        await markProcessingError(auditId, resolvedProfile.error);
+        return new Response("OK", { status: 200 });
+      }
+
+      if (!resolvedProfile.profileId) {
         await markProcessingError(
           auditId,
-          "Missing supabaseUserId for activating event",
+          `No matching profile found for activating event. supabaseUserId=${supabaseUserId ?? "(missing)"}, customerEmail=${customerEmail ?? "(missing)"}, subscriptionId=${subscriptionId ?? "(missing)"}`,
         );
         return new Response("OK", { status: 200 });
       }
 
+      const resolvedUserId = resolvedProfile.profileId;
+
       if (!requestedTier) {
         await markProcessingError(
           auditId,
-          `Invalid or missing requestedTier: ${requestedTierRaw ?? "(missing)"}`,
+          `Invalid or missing requestedTier and unable to resolve tier from amount. requestedTier=${requestedTierRaw ?? "(missing)"}`,
         );
         return new Response("OK", { status: 200 });
       }
@@ -298,7 +482,7 @@ Deno.serve(async (req) => {
       const { error: profileError } = await supabase
         .from("profiles")
         .update(profileUpdate)
-        .eq("id", supabaseUserId);
+        .eq("id", resolvedUserId);
 
       if (profileError) {
         await markProcessingError(
@@ -310,7 +494,7 @@ Deno.serve(async (req) => {
 
       await markProcessed(auditId);
       console.log(
-        `[CCBill Webhook] Profile ${supabaseUserId} upgraded to ${requestedTier}.`,
+        `[CCBill Webhook] Profile ${resolvedUserId} upgraded to ${requestedTier}.`,
       );
       return new Response("OK", { status: 200 });
     }

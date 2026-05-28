@@ -13,6 +13,7 @@ import { SwipeActions } from '@/components/SwipeActions';
 import { toast } from 'sonner';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
 import { notifyNewLike } from '@/lib/notifications';
+import { hasPaidAccess } from '@/lib/subscriptionAccess';
 
 type SwipeDirection = 'left' | 'right' | 'up';
 
@@ -256,7 +257,7 @@ export default function Discover() {
       if (!canUse) {
         const tier = profile?.subscription_tier ?? 'free';
 
-        if (!profile || (profile as any).subscription_status !== 'active' || tier === 'free') {
+        if (!hasPaidAccess(profile)) {
           toast.error(
             'You have used your daily Super-Intro. Upgrade to Silver or Gold for more Super-Intros.'
           );
@@ -391,9 +392,7 @@ export default function Discover() {
         }
 
         if (!canLike) {
-          const tier = (profile as any)?.subscription_tier ?? 'free';
-
-          if (!profile || (profile as any).subscription_status !== 'active' || tier === 'free') {
+          if (!hasPaidAccess(profile)) {
             toast.error(
               'You have used your 10 daily likes on the Free plan. Upgrade to Silver or Gold for unlimited likes.'
             );
