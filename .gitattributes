@@ -1,0 +1,18 @@
+# Normalize line endings to LF on commit; prevents CRLF/LF churn
+# when the repo is edited on both Windows and macOS/Linux.
+* text=auto eol=lf
+
+# Binary assets — never normalize
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.ico binary
+*.webp binary
+*.mp4 binary
+*.mov binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.eot binary
+*.pdf binary
