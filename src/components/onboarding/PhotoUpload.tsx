@@ -6,10 +6,12 @@ import { Camera, X, Upload, AlertCircle, Star } from 'lucide-react';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
+import { getMinPhotoCount } from '@/lib/photoRules';
 
 interface PhotoUploadProps {
   onSubmit: (photos: string[]) => void;
   onBack: () => void;
+  gender?: string | null;
 }
 
 type PhotoItem = {
@@ -20,6 +22,7 @@ type PhotoItem = {
 export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   onSubmit,
   onBack,
+  gender,
 }) => {
   const { user } = useAuth();
   const [photos, setPhotos] = useState<PhotoItem[]>([]);
@@ -27,6 +30,12 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   const [uploading, setUploading] = useState(false);
   const [loadingExisting, setLoadingExisting] = useState(true);
   const [error, setError] = useState('');
+
+  const minPhotos = getMinPhotoCount(gender);
+  const isMale = minPhotos > 0;
+  const subtitle = isMale
+    ? `Please upload at least ${minPhotos} photos to complete your profile.`
+    : 'Photos are optional. You can add them now or skip this step.';
 
   // Helper: from public URL → storage object path (after /profile-media/)
   const extractPathFromUrl = (url: string): string | null => {
@@ -184,6 +193,11 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
 
     setError('');
 
+    if (minPhotos > 0 && photos.length <= minPhotos) {
+      setError(`Male profiles must keep at least ${minPhotos} photos.`);
+      return;
+    }
+
     try {
       // 1) Remove from Storage (derive path from URL)
       const path = extractPathFromUrl(photo.url);
@@ -229,24 +243,22 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   };
 
   const handleSubmit = () => {
-    if (photos.length < 2) {
-      setError('Please upload at least 2 photos');
+    if (photos.length < minPhotos) {
+      setError(`Please upload at least ${minPhotos} photos`);
       return;
     }
     // Only send URLs back to the parent, like before
     onSubmit(photos.map((p) => p.url));
   };
 
-  const isContinueDisabled = photos.length < 2 || uploading || loadingExisting;
+  const isContinueDisabled = photos.length < minPhotos || uploading || loadingExisting;
 
   return (
     <div className="max-w-2xl mx-auto p-6">
       <Card>
         <CardHeader>
           <CardTitle className="text-2xl">Add Your Photos</CardTitle>
-          <p className="text-gray-600">
-            Upload 2–6 photos that best represent you
-          </p>
+          <p className="text-gray-600">{subtitle}</p>
         </CardHeader>
         <CardContent className="space-y-6">
           {error && (

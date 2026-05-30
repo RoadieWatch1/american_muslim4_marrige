@@ -8,6 +8,7 @@ import { ProfileForm } from '@/components/onboarding/ProfileForm';
 import { IslamicPreferences } from '@/components/onboarding/IslamicPreferences';
 import { PhoneVerification } from '@/components/onboarding/PhoneVerification';
 import { PhotoUpload } from '@/components/onboarding/PhotoUpload';
+import { getMinPhotoCount } from '@/lib/photoRules';
 import { PersonalDetails } from '@/components/onboarding/PersonalDetails';
 import { IntroVideoUpload } from '@/components/onboarding/IntroVideoUpload';
 
@@ -129,8 +130,8 @@ function buildCompletedStepsFromDb(args: {
   // wali step: complete if male (skipped) OR wali invite exists
   completed[2] = dbGender === 'male' || hasWaliInvite;
 
-  // photos: require >= 2
-  completed[3] = photoCount >= 2;
+  // photos: require >= getMinPhotoCount(dbGender) (3 for males, 0 for females)
+  completed[3] = photoCount >= getMinPhotoCount(dbGender);
 
   // intro video: optional
   completed[4] =
@@ -173,12 +174,21 @@ function computeInitialStep(args: {
     s = hasWaliInvite ? 3 : 2;
   }
 
-  if (photoCount >= 2 && s <= 3) s = 4;
-  if (hasBasicProfile && photoCount >= 2 && s <= 4) s = 5;
-  if (hasPersonalDetails && photoCount >= 2 && hasBasicProfile && s <= 5) s = 6;
+  const minPhotos = getMinPhotoCount(dbGender);
+  const photosStepDone = photoCount >= minPhotos;
+
+  // Don't silently auto-advance past step 3 on a fresh female (min=0 → "done" with
+  // 0 photos). Only resume past photos when there is real evidence the user already
+  // engaged with the step or moved beyond it.
+  const hasMovedPastPhotos =
+    photoCount > 0 || hasBasicProfile || hasPersonalDetails || hasIslamicPreferences;
+
+  if (photosStepDone && hasMovedPastPhotos && s <= 3) s = 4;
+  if (hasBasicProfile && photosStepDone && s <= 4) s = 5;
+  if (hasPersonalDetails && photosStepDone && hasBasicProfile && s <= 5) s = 6;
   if (
     hasIslamicPreferences &&
-    photoCount >= 2 &&
+    photosStepDone &&
     hasBasicProfile &&
     hasPersonalDetails &&
     s <= 6
@@ -609,7 +619,7 @@ export default function Onboarding() {
 
     setCompletedSteps((prev) => {
       const next = [...prev];
-      next[3] = photos.length >= 2;
+      next[3] = photos.length >= getMinPhotoCount(gender ?? profileData?.gender);
       return next;
     });
 
@@ -822,7 +832,13 @@ export default function Onboarding() {
           />
         )}
 
-        {step === 3 && <PhotoUpload onSubmit={handlePhotoUpload} onBack={goBack} />}
+        {step === 3 && (
+          <PhotoUpload
+            onSubmit={handlePhotoUpload}
+            onBack={goBack}
+            gender={gender ?? profileData?.gender ?? null}
+          />
+        )}
 
         {step === 4 && (
           <IntroVideoUpload onSubmit={() => setStep(5)} onBack={() => setStep(3)} />

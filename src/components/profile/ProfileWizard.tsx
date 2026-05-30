@@ -241,6 +241,7 @@ const buildProfilePayload = (merged: any) => {
               goNext();
             }}
             onBack={goBack}
+            gender={profile?.gender ?? null}
           />
         )}
 
