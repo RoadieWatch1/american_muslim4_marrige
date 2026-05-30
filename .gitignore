@@ -12,6 +12,17 @@ dist
 dist-ssr
 *.local
 .env
+.env.*
+!.env.example
+
+# Supabase local cache
+supabase/.temp/
+
+# iOS / Capacitor native build artifacts
+ios/App/Pods/
+ios/App/App/public/
+ios/DerivedData/
+*.xcuserstate
 
 # Editor directories and files
 .vscode/*
