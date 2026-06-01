@@ -37,7 +37,7 @@ import CheckoutSuccessPage from "./pages/CheckoutSuccessPage";
 import CheckoutFailedPage from "./pages/CheckoutFailedPage";
 import TermsOfService from "./pages/TermsOfService";
 import PrivacyPolicy from "./pages/PrivacyPolicy";
-import { ScrollToTop } from "./components/ScrollToTop";
+import { ScrollToTop } from "./components/layout/ScrollToTop";
 import BillingPage from "./pages/BillingPage";
 import Exemption2257 from "./pages/Exemption2257";
 import ContactPage from "./pages/Contact";
