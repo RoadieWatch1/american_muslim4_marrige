@@ -127,7 +127,7 @@ export default function DashboardNav({
   );
 
   return (
-    <nav className="bg-white shadow-sm border-b">
+    <nav className="bg-white shadow-sm border-b pt-safe px-safe sticky top-0 z-50 w-full max-w-full overflow-x-hidden">
       <div className="max-w-7xl mx-auto px-4 py-4 flex justify-between items-center">
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">

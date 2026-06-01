@@ -172,13 +172,15 @@ export default function DashboardLayout() {
   }, [user, loadCounts]);
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-teal-50 to-blue-50">
+    <div className="min-h-screen w-full max-w-full overflow-x-hidden bg-gradient-to-br from-teal-50 to-blue-50">
       <DashboardNav
         unreadMessages={unreadMessages}
         pendingIntroRequests={pendingIntroRequests}
         incomingLikes={incomingLikes}
       />
-      <Outlet />
+      <div className="ios-safe-page-top w-full max-w-full overflow-x-hidden px-safe pb-safe">
+        <Outlet />
+      </div>
     </div>
   );
 }

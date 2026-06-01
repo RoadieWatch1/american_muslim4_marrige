@@ -162,3 +162,155 @@
     color: hsl(var(--foreground)) !important;
   }
 }
+
+/* =========================================
+   iOS SAFE AREAS (notch / Dynamic Island / home indicator)
+   env(safe-area-inset-*) is 0 in normal browsers, so the web app
+   is visually unchanged; only notched devices (the Capacitor iOS
+   build) get the extra padding.
+   ========================================= */
+:root {
+  --safe-top: env(safe-area-inset-top, 0px);
+  --safe-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-left: env(safe-area-inset-left, 0px);
+  --safe-right: env(safe-area-inset-right, 0px);
+}
+
+@layer utilities {
+  /* Pad the sticky/top nav down below the status bar / island */
+  .pt-safe {
+    padding-top: var(--safe-top);
+  }
+  .pb-safe {
+    padding-bottom: var(--safe-bottom);
+  }
+  .pl-safe {
+    padding-left: var(--safe-left);
+  }
+  .pr-safe {
+    padding-right: var(--safe-right);
+  }
+  /* Convenience: pad both left and right so content clears rounded corners */
+  .px-safe {
+    padding-left: var(--safe-left);
+    padding-right: var(--safe-right);
+  }
+  /* Push a full-height container's min height to account for both insets */
+  .min-h-screen-safe {
+    min-height: calc(100vh - var(--safe-top) - var(--safe-bottom));
+  }
+}
+
+/* =========================================================
+   CAPACITOR iOS-ONLY: horizontal overflow containment
+   ---------------------------------------------------------
+   Everything below is scoped under .capacitor-ios-app, a class
+   added (in src/main.tsx) ONLY when the app runs inside the
+   native Capacitor shell. On the Vercel website this class is
+   never present, so NONE of these rules apply and the desktop /
+   mobile-web layout is byte-for-byte unchanged.
+
+   Goal: stop the app from sliding left/right after login when a
+   wide card/grid tries to exceed the iPhone viewport width.
+   ========================================================= */
+html.capacitor-ios-app,
+body.capacitor-ios-app {
+  max-width: 100%;
+  overflow-x: hidden;
+  /* Stop the rubber-band horizontal bounce on iOS */
+  overscroll-behavior-x: none;
+}
+
+body.capacitor-ios-app {
+  /* The body should never establish a scroll wider than the screen */
+  width: 100%;
+  position: relative;
+}
+
+/* Belt-and-suspenders: the React root and any direct child must not
+   exceed the viewport inside the native app. */
+body.capacitor-ios-app #root {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+/* Any element that tries to be exactly/at-least viewport-width inside
+   the native shell gets clamped. Scoped to capacitor-ios-app so the
+   website is untouched. */
+body.capacitor-ios-app .w-screen,
+body.capacitor-ios-app .min-w-screen {
+  width: 100% !important;
+  min-width: 0 !important;
+  max-width: 100% !important;
+}
+
+/* =========================================================
+   Capacitor iOS vertical safe-area protection
+   Scoped only to native iOS app. Website is unaffected.
+========================================================= */
+
+html.capacitor-ios-app {
+  height: 100%;
+}
+
+body.capacitor-ios-app {
+  min-height: 100%;
+}
+
+/* Use this on full logged-in screens */
+body.capacitor-ios-app .ios-screen-safe {
+  min-height: 100dvh;
+  padding-top: calc(env(safe-area-inset-top) + 16px);
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  box-sizing: border-box;
+}
+
+/* Use this on sticky/fixed page headers */
+body.capacitor-ios-app .ios-header-safe {
+  padding-top: calc(env(safe-area-inset-top) + 12px);
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  box-sizing: border-box;
+}
+
+/* Use this when the page already has its own layout but only needs top spacing */
+body.capacitor-ios-app .ios-safe-page-top {
+  padding-top: calc(env(safe-area-inset-top) + 16px);
+}
+
+/* Prevent fixed headers from sitting behind the Dynamic Island */
+body.capacitor-ios-app header.fixed,
+body.capacitor-ios-app nav.fixed,
+body.capacitor-ios-app .fixed.top-0,
+body.capacitor-ios-app .sticky.top-0 {
+  padding-top: calc(env(safe-area-inset-top) + 8px);
+}
+
+/* =========================================================
+   Prevent iOS WebView input auto-zoom after login
+   Scoped only to native Capacitor app.
+   iOS Safari/WebView zooms in when a focused input has a
+   font-size < 16px, and stays zoomed. The shared <Input> uses
+   text-sm (14px), so we bump every native-app form control to
+   16px. The website keeps its original text-sm styling because
+   this rule only applies under .capacitor-ios-app.
+========================================================= */
+
+body.capacitor-ios-app input,
+body.capacitor-ios-app textarea,
+body.capacitor-ios-app select {
+  font-size: 16px !important;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+body.capacitor-ios-app input[type="email"],
+body.capacitor-ios-app input[type="password"],
+body.capacitor-ios-app input[type="text"],
+body.capacitor-ios-app input[type="tel"],
+body.capacitor-ios-app input[type="number"],
+body.capacitor-ios-app input[type="search"] {
+  font-size: 16px !important;
+}

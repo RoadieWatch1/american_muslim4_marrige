@@ -19,7 +19,7 @@ const AppLayout: React.FC = () => {
   return (
     <div className="min-h-screen">
       <Navigation />
-      <main className="pt-16">
+      <main className="pt-16" style={{ paddingTop: "calc(4rem + env(safe-area-inset-top, 0px))" }}>
         <Hero />
         <Stats />
                 
