@@ -6,6 +6,14 @@
 	<string>en</string>
 	<key>CFBundleDisplayName</key>
         <string>American Muslim 4 Marriage</string>
+	<key>NSCameraUsageDescription</key>
+	<string>American Muslim 4 Marriage uses your camera so you can take profile photos and videos for your matchmaking profile.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>American Muslim 4 Marriage uses your photo library so you can upload profile photos and videos to your matchmaking profile.</string>
+	<key>NSPhotoLibraryAddUsageDescription</key>
+	<string>American Muslim 4 Marriage may save selected images or profile-related media to your photo library when you choose to download or save them.</string>
+	<key>NSLocationWhenInUseUsageDescription</key>
+	<string>American Muslim 4 Marriage uses your location to help show relevant matches and map-based location features near you.</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -33,8 +41,6 @@
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>
-		<string>UIInterfaceOrientationLandscapeLeft</string>
-		<string>UIInterfaceOrientationLandscapeRight</string>
 	</array>
 	<key>UISupportedInterfaceOrientations~ipad</key>
 	<array>
