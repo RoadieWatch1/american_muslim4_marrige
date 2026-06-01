@@ -1,14 +1,23 @@
 // src/components/layout/DashboardLayout.tsx
 import React, { useCallback, useEffect, useState } from "react";
-import { Outlet } from "react-router-dom";
+import { Outlet, useLocation } from "react-router-dom";
 import DashboardNav from "./DashboardNav";
+import IosBackBar from "./IosBackBar";
 import { supabase } from "@/lib/supabase";
 import { useAuth } from "@/contexts/AuthContext";
 
 const LAST_SEEN_PING_MS = 30_000;
 
+// Routes that are themselves a "home" within the app — no back bar needed.
+const BACK_BAR_EXEMPT_ROUTES = ["/dashboard"];
+
 export default function DashboardLayout() {
   const { user } = useAuth();
+  const location = useLocation();
+
+  // Show the iOS back bar on every inner page except the dashboard home.
+  // (IosBackBar itself renders nothing on the website, so this is iOS-only.)
+  const showIosBackBar = !BACK_BAR_EXEMPT_ROUTES.includes(location.pathname);
 
   const [unreadMessages, setUnreadMessages] = useState(0);
   const [pendingIntroRequests, setPendingIntroRequests] = useState(0);
@@ -179,6 +188,7 @@ export default function DashboardLayout() {
         incomingLikes={incomingLikes}
       />
       <div className="ios-safe-page-top w-full max-w-full overflow-x-hidden px-safe pb-safe">
+        {showIosBackBar && <IosBackBar />}
         <Outlet />
       </div>
     </div>
