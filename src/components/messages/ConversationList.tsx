@@ -1,10 +1,13 @@
 // src/components/messages/ConversationList.tsx
+import { useState } from 'react';
 import { Conversation } from '@/types';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/Badge';
 import { formatDistanceToNow } from 'date-fns';
 import { Sparkles } from 'lucide-react';
 import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
+
+const NEW_MATCHES_COLLAPSED_COUNT = 5;
 
 interface ConversationListProps {
   conversations: Conversation[];
@@ -34,8 +37,15 @@ export function ConversationList({
   selectedId,
   onSelect,
 }: ConversationListProps) {
+  const [showAllNewMatches, setShowAllNewMatches] = useState(false);
+
   const newMatches = conversations.filter((c) => !c.last_message);
   const activeConversations = conversations.filter((c) => c.last_message);
+
+  const hasMoreNewMatches = newMatches.length > NEW_MATCHES_COLLAPSED_COUNT;
+  const visibleNewMatches = showAllNewMatches
+    ? newMatches
+    : newMatches.slice(0, NEW_MATCHES_COLLAPSED_COUNT);
 
   if (conversations.length === 0) {
     return (
@@ -50,17 +60,36 @@ export function ConversationList({
 
   return (
     <div className="h-full overflow-y-auto">
-      {/* New Matches row */}
+      {/* New Matches */}
       {newMatches.length > 0 && (
-        <div className="border-b bg-gradient-to-br from-teal-50 to-emerald-50 px-4 py-3">
-          <div className="flex items-center gap-1.5 mb-3">
-            <Sparkles className="h-4 w-4 text-teal-600" />
-            <span className="text-xs font-semibold uppercase tracking-wide text-teal-700">
+        <section className="w-full max-w-full overflow-hidden border-b bg-gradient-to-br from-teal-50 to-emerald-50 px-4 py-3">
+          <div className="mb-3 flex w-full items-center justify-between gap-3">
+            <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide text-teal-700">
+              <Sparkles className="h-4 w-4 text-teal-600" />
               New Matches · {newMatches.length}
             </span>
+
+            {hasMoreNewMatches && (
+              <button
+                type="button"
+                onClick={() => setShowAllNewMatches((value) => !value)}
+                className="shrink-0 rounded-full border border-teal-600/30 px-3 py-1 text-xs font-bold text-teal-700 hover:bg-teal-100 transition-colors"
+              >
+                {showAllNewMatches ? 'Show less' : 'View all'}
+              </button>
+            )}
           </div>
-          <div className="flex gap-3 overflow-x-auto pb-1 -mx-1 px-1">
-            {newMatches.map((conv) => {
+
+          <div
+            className={
+              showAllNewMatches
+                ? // Expanded: wrapped grid — 3 cols on mobile up to 8 on wide web
+                  'grid w-full max-w-full grid-cols-3 gap-x-2 gap-y-4 sm:grid-cols-4 md:grid-cols-6 lg:grid-cols-8'
+                : // Collapsed: compact 5-up on mobile, more columns on wider web
+                  'grid w-full max-w-full grid-cols-5 gap-x-2 gap-y-4 sm:grid-cols-6 lg:grid-cols-8'
+            }
+          >
+            {visibleNewMatches.map((conv) => {
               const name = conv.other_user.firstName || 'Member';
               const initial = name.charAt(0).toUpperCase();
               const color = getAvatarColor(conv.other_user.id);
@@ -69,7 +98,7 @@ export function ConversationList({
                 <button
                   key={conv.id}
                   onClick={() => onSelect(conv)}
-                  className="flex-shrink-0 flex flex-col items-center gap-1.5 group"
+                  className="flex min-w-0 flex-col items-center gap-1.5 group"
                   title={`Say hi to ${name}`}
                 >
                   <div className="relative">
@@ -87,7 +116,7 @@ export function ConversationList({
                       ✦
                     </span>
                   </div>
-                  <span className="text-xs font-medium text-foreground truncate max-w-[64px]">
+                  <span className="block w-full truncate text-center text-xs font-medium text-foreground">
                     {name}
                   </span>
                   <SubscriptionBadge tier={conv.other_user.subscriptionTier} size="xs" />
@@ -95,7 +124,7 @@ export function ConversationList({
               );
             })}
           </div>
-        </div>
+        </section>
       )}
 
       {/* Active conversations */}
