@@ -291,10 +291,17 @@ body.capacitor-ios-app .sticky.top-0 {
 /* =========================================================
    iOS-only Back bar (IosBackBar.tsx)
    Hidden on the website; only shown inside the native app.
-   Owns the safe-area top spacing on inner pages so the Back
-   label always sits fully BELOW the Dynamic Island / status
-   area. Not sticky — being pinned to viewport top-0 is exactly
-   what put it inside the island on scroll.
+
+   The Back bar is SELF-SAFE: it carries its own
+   env(safe-area-inset-top) protection so it always sits below
+   the Dynamic Island / status area, even when it renders as the
+   first top element (e.g. after a landing -> Messages transition
+   where the nav may not be above it). Not sticky — pinning to
+   viewport top-0 is what pushed it into the island on scroll.
+
+   When the AM4M nav IS above it this adds a little extra space;
+   that is solved separately via layout structure (see
+   DashboardLayout) rather than by weakening this protection.
 ========================================================= */
 .ios-back-bar {
   display: none;
@@ -303,14 +310,31 @@ body.capacitor-ios-app .sticky.top-0 {
 body.capacitor-ios-app .ios-back-bar {
   display: flex;
   align-items: center;
-  /* The AM4M nav above already clears the Dynamic Island, so the Back
-     bar only needs normal vertical padding — no env(safe-area-inset-top)
-     here (that produced redundant blank space). */
-  padding-top: 12px;
+  position: relative;
+  z-index: 30;
+  box-sizing: border-box;
+
+  /*
+    Important:
+    env(safe-area-inset-top) can become stale/0 after iOS WebView resume.
+    The hard 64px fallback keeps the Back bar below the Dynamic Island even
+    when env() fails — max() picks whichever is larger.
+      env() working -> safe-area + 12px
+      env() stale/0 -> still 64px
+  */
+  padding-top: max(64px, calc(env(safe-area-inset-top) + 12px));
   padding-bottom: 12px;
   padding-left: max(1rem, env(safe-area-inset-left));
   padding-right: max(1rem, env(safe-area-inset-right));
-  box-sizing: border-box;
+}
+
+/* Resume-from-background reflow nudge (see main.tsx forceSafeAreaReflow).
+   When this class is briefly added, the imperceptible min-height change
+   forces the iOS WebView to re-evaluate env(safe-area-inset-*) so stale
+   safe-area padding snaps back into place. Scoped to the native app. */
+body.capacitor-ios-app.ios-reflow-fix,
+body.capacitor-ios-app.ios-reflow-fix #root {
+  min-height: calc(100dvh + 0.01px);
 }
 
 /* =========================================================
