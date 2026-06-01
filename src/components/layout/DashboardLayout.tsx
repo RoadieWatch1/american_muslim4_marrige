@@ -187,7 +187,14 @@ export default function DashboardLayout() {
         pendingIntroRequests={pendingIntroRequests}
         incomingLikes={incomingLikes}
       />
-      <div className="ios-safe-page-top w-full max-w-full overflow-x-hidden px-safe pb-safe">
+      <div
+        className={`w-full max-w-full overflow-x-hidden px-safe pb-safe ${
+          // When the back bar shows, it owns the safe-area top spacing.
+          // Otherwise (dashboard root) the wrapper provides it so content
+          // still clears the Dynamic Island.
+          showIosBackBar ? "" : "ios-safe-page-top"
+        }`}
+      >
         {showIosBackBar && <IosBackBar />}
         <Outlet />
       </div>

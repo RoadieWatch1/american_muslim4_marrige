@@ -289,6 +289,31 @@ body.capacitor-ios-app .sticky.top-0 {
 }
 
 /* =========================================================
+   iOS-only Back bar (IosBackBar.tsx)
+   Hidden on the website; only shown inside the native app.
+   Owns the safe-area top spacing on inner pages so the Back
+   label always sits fully BELOW the Dynamic Island / status
+   area. Not sticky — being pinned to viewport top-0 is exactly
+   what put it inside the island on scroll.
+========================================================= */
+.ios-back-bar {
+  display: none;
+}
+
+body.capacitor-ios-app .ios-back-bar {
+  display: flex;
+  align-items: center;
+  /* The AM4M nav above already clears the Dynamic Island, so the Back
+     bar only needs normal vertical padding — no env(safe-area-inset-top)
+     here (that produced redundant blank space). */
+  padding-top: 12px;
+  padding-bottom: 12px;
+  padding-left: max(1rem, env(safe-area-inset-left));
+  padding-right: max(1rem, env(safe-area-inset-right));
+  box-sizing: border-box;
+}
+
+/* =========================================================
    Prevent iOS WebView input auto-zoom after login
    Scoped only to native Capacitor app.
    iOS Safari/WebView zooms in when a focused input has a
