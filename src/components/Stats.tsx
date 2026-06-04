@@ -3,7 +3,6 @@ import { supabase } from "@/lib/supabase";
 
 type LandingStats = {
   active_members: number;
-  verified_profiles: number;
   successful_marriages: number;
 };
 
@@ -37,7 +36,6 @@ export const Stats: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [stats, setStats] = useState<LandingStats>({
     active_members: 0,
-    verified_profiles: 0,
     successful_marriages: 0,
   });
 
@@ -59,7 +57,6 @@ export const Stats: React.FC = () => {
         if (!cancelled) {
           setStats({
             active_members: Number(s.active_members ?? 0),
-            verified_profiles: Number(s.verified_profiles ?? 0),
             successful_marriages: Number(s.successful_marriages ?? 0),
           });
         }
@@ -78,12 +75,10 @@ export const Stats: React.FC = () => {
 
   const countMembers = useCountUp(loading ? null : stats.active_members);
   const countMarriages = useCountUp(loading ? null : stats.successful_marriages);
-  const countProfiles = useCountUp(loading ? null : stats.verified_profiles);
 
   const cards = [
     { value: loading ? "—" : formatCount(countMembers), label: "Active Members" },
     { value: loading ? "—" : formatCount(countMarriages), label: "Successful Marriages" },
-    { value: loading ? "—" : formatCount(countProfiles), label: "Marriage-Minded Members" },
     { value: "24/7", label: "Moderation Support" },
   ];
 
@@ -93,7 +88,7 @@ export const Stats: React.FC = () => {
         <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-[600px] h-[200px] bg-teal-500/10 rounded-full blur-3xl" />
       </div>
       <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-white/10">
+        <div className="grid grid-cols-1 md:grid-cols-3 divide-x divide-white/10">
           {cards.map((stat, index) => (
             <div key={index} className="text-center px-8 py-4">
               <div className="text-4xl md:text-5xl font-extrabold text-white mb-2 tabular-nums">
