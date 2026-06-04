@@ -83,7 +83,7 @@ export const Stats: React.FC = () => {
   const cards = [
     { value: loading ? "—" : formatCount(countMembers), label: "Active Members" },
     { value: loading ? "—" : formatCount(countMarriages), label: "Successful Marriages" },
-    { value: loading ? "—" : formatCount(countProfiles), label: "Verified Profiles" },
+    { value: loading ? "—" : formatCount(countProfiles), label: "Marriage-Minded Members" },
     { value: "24/7", label: "Moderation Support" },
   ];
 

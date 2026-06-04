@@ -56,12 +56,6 @@ export const ProfileCard: React.FC<ProfileCardProps> = ({
         />
         <div className="absolute top-4 right-4 flex gap-2">
           <SubscriptionBadge tier={profile.subscriptionTier} />
-          {profile.verified && (
-            <Badge variant="success">
-              <span className="mr-1">✓</span>
-              Verified
-            </Badge>
-          )}
           {profile.waliRequired && <Badge variant="info">Wali Active</Badge>}
         </div>
       </div>

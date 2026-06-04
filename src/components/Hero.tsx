@@ -74,7 +74,7 @@ export const Hero: React.FC = () => {
               </div>
 
               <div className="mt-10 flex flex-wrap gap-3">
-                {['Verified Profiles', 'Wali Involvement', '100% Halal'].map((label) => (
+                {['Marriage-Minded Members', 'Wali Involvement', '100% Halal'].map((label) => (
                   <span
                     key={label}
                     className="inline-flex items-center gap-1.5 rounded-full bg-white/10 backdrop-blur-sm border border-white/20 px-3 py-1 text-sm text-foreground/90"

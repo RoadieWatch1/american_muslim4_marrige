@@ -37,9 +37,6 @@ export function SwipeCard({ profile, onSwipe }: SwipeCardProps) {
         <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent" />
         
         <div className="absolute top-4 right-4 flex gap-2">
-          {profile.verified && (
-            <Badge className="bg-blue-500">✓ Verified</Badge>
-          )}
           {profile.waliRequired && (
             <Badge className="bg-purple-500">Wali Required</Badge>
           )}

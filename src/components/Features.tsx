@@ -1,5 +1,5 @@
 import React from 'react';
-import { Handshake, BadgeCheck, MessageCircle, Target, Lock, Moon } from 'lucide-react';
+import { Handshake, Compass, MessageCircle, Target, Lock, Moon } from 'lucide-react';
 
 const features = [
   {
@@ -8,9 +8,9 @@ const features = [
     description: 'Optional wali approval for intro requests and chaperoned messaging for peace of mind.'
   },
   {
-    icon: BadgeCheck,
-    title: 'Verified Profiles',
-    description: 'Identity verification and photo moderation ensure authentic, trustworthy connections.'
+    icon: Compass,
+    title: 'Faith-Centered Matching',
+    description: 'Match on denomination, prayer life, practice level, and nikah intentions — not just photos.'
   },
   {
     icon: MessageCircle,

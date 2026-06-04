@@ -255,23 +255,6 @@ export function FilterPanel({ filters, onFiltersChange }: FilterPanelProps) {
               </div>
             ) : (
               <div className="space-y-3">
-                {/* Silver+ */}
-                <div className="flex items-center space-x-2">
-                  <Checkbox
-                    id="verified"
-                    checked={!!localFilters.verifiedOnly}
-                    onCheckedChange={(checked) =>
-                      setLocalFilters({
-                        ...localFilters,
-                        verifiedOnly: !!checked,
-                      })
-                    }
-                  />
-                  <label htmlFor="verified" className="text-sm cursor-pointer">
-                    Verified profiles only
-                  </label>
-                </div>
-
                 {/* Gold-only block */}
                 <div className={!canUseGold ? 'opacity-50' : ''}>
                   {!canUseGold && (

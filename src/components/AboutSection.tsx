@@ -59,7 +59,7 @@ export const AboutSection: React.FC = () => {
 
             <div className="mt-8 flex flex-wrap gap-6 text-sm text-foreground/60">
               <span className="flex items-center gap-2">
-                <CheckCircle className="w-4 h-4 text-teal-600 flex-shrink-0" /> Verified profiles
+                <CheckCircle className="w-4 h-4 text-teal-600 flex-shrink-0" /> Marriage-minded members
               </span>
               <span className="flex items-center gap-2">
                 <CheckCircle className="w-4 h-4 text-teal-600 flex-shrink-0" /> Wali-friendly
