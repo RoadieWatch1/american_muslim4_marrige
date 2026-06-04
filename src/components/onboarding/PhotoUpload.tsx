@@ -32,10 +32,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
   const [error, setError] = useState('');
 
   const minPhotos = getMinPhotoCount(gender);
-  const isMale = minPhotos > 0;
-  const subtitle = isMale
-    ? `Please upload at least ${minPhotos} photos to complete your profile.`
-    : 'Photos are optional. You can add them now or skip this step.';
+  const subtitle = `Please upload at least ${minPhotos} photos to complete your profile.`;
 
   // Helper: from public URL → storage object path (after /profile-media/)
   const extractPathFromUrl = (url: string): string | null => {
@@ -194,7 +191,7 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
     setError('');
 
     if (minPhotos > 0 && photos.length <= minPhotos) {
-      setError(`Male profiles must keep at least ${minPhotos} photos.`);
+      setError(`Your profile must keep at least ${minPhotos} photos.`);
       return;
     }
 

@@ -1,3 +1,4 @@
-export function getMinPhotoCount(gender?: string | null): number {
-  return String(gender ?? "").toLowerCase() === "male" ? 3 : 0;
+// Both genders now require 3 photos. Signature kept stable so callers don't change.
+export function getMinPhotoCount(_gender?: string | null): number {
+  return 3;
 }
