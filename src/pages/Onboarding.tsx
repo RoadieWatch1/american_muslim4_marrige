@@ -130,12 +130,14 @@ function buildCompletedStepsFromDb(args: {
   // wali step: complete if male (skipped) OR wali invite exists
   completed[2] = dbGender === 'male' || hasWaliInvite;
 
-  // photos: require >= getMinPhotoCount(dbGender) (3 for males, 0 for females)
+  // photos: require >= getMinPhotoCount() (currently 3 for everyone)
   completed[3] = photoCount >= getMinPhotoCount(dbGender);
 
-  // intro video: optional
+  // intro video: optional, but it must not act as a side door around photos —
+  // it can't be "done" until the Photos step (completed[3]) is satisfied.
   completed[4] =
-    hasIntroVideo || hasBasicProfile || hasPersonalDetails || hasIslamicPreferences;
+    completed[3] &&
+    (hasIntroVideo || hasBasicProfile || hasPersonalDetails || hasIslamicPreferences);
 
   // profile step: basics + photos
   completed[5] = hasBasicProfile && completed[3];
@@ -461,14 +463,14 @@ export default function Onboarding() {
   };
 
 
-  const saveStep = async (partial: any) => {
-    if (!user) return;
+  const saveStep = async (partial: any): Promise<{ error: any | null }> => {
+    if (!user) return { error: null };
 
     const merged = { ...profileData, ...partial };
     setProfileData(merged);
 
     const payload = buildProfilePayload(merged);
-    if (!payload) return;
+    if (!payload) return { error: null };
 
     const { error } = await supabase.from('profiles').upsert(payload);
 
@@ -480,6 +482,8 @@ export default function Onboarding() {
         variant: 'destructive',
       });
     }
+
+    return { error };
   };
 
   // ─────────────────────────────────────────────────────────────
@@ -651,7 +655,44 @@ export default function Onboarding() {
   };
 
   const completeOnboarding = async () => {
-    await saveStep({ onboarding_completed: true });
+    if (!user) return;
+
+    // The DB trigger enforces this too, but re-check here with a fresh count so we
+    // show a clear message and never navigate away on a write the server rejects.
+    const minPhotos = getMinPhotoCount(gender ?? profileData?.gender);
+    const { count, error: countErr } = await supabase
+      .from('media')
+      .select('id', { count: 'exact', head: true })
+      .eq('user_id', user.id)
+      .eq('type', 'photo')
+      .in('status', ['pending', 'approved']);
+
+    if (countErr) {
+      console.error('Error counting photos before completing onboarding', countErr);
+      toast({
+        title: 'Could not verify your photos',
+        description: countErr.message,
+        variant: 'destructive',
+      });
+      return;
+    }
+
+    if ((count ?? 0) < minPhotos) {
+      toast({
+        title: 'Photos required',
+        description: `Please add at least ${minPhotos} photos to finish your profile.`,
+        variant: 'destructive',
+      });
+      setStep(3);
+      return;
+    }
+
+    const { error } = await saveStep({ onboarding_completed: true });
+    if (error) {
+      // saveStep already surfaced the error via toast; stay on the page.
+      return;
+    }
+
     await refreshProfile();
 
     setCompletedSteps((prev) => {
@@ -717,6 +758,9 @@ export default function Onboarding() {
 
   const canClickStep = (targetStep: number) => {
     if (targetStep === step) return true;
+    // The Photos step (step 3) must be completed before any later step is reachable,
+    // so the stepper can't be used to jump past photos.
+    if (targetStep > 3 && !completedSteps[3]) return false;
     return completedSteps[targetStep];
   };
 
