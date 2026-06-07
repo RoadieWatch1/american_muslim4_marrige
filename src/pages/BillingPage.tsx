@@ -21,6 +21,12 @@ type ProfileSubscription = {
   subscription_cancel_at_period_end: boolean | null;
 };
 
+// Cancellations are handled manually for now: the user emails support, and the
+// CCBill cancellation webhook updates the profile once support cancels in CCBill.
+const SUPPORT_EMAIL = "support@americanmuslim4marriage.com";
+const CANCEL_SUPPORT_MAILTO =
+  "mailto:support@americanmuslim4marriage.com?subject=Cancel%20My%20AM4M%20Subscription";
+
 export default function BillingPage() {
   const { user } = useAuth();
   const { toast } = useToast();
@@ -29,7 +35,7 @@ export default function BillingPage() {
 
   const [sub, setSub] = useState<ProfileSubscription | null>(null);
   const [loading, setLoading] = useState(false);
-  const [canceling, setCanceling] = useState(false);
+  const [showCancelInfo, setShowCancelInfo] = useState(false);
 
   // Show toast after Stripe redirect: /dashboard/billing?success=1 or ?canceled=1
   useEffect(() => {
@@ -128,48 +134,10 @@ export default function BillingPage() {
     window.location.href = "/pricing";
   };
 
-  const handleCancelSubscription = async () => {
-    if (!user?.id) return;
-
-    setCanceling(true);
-    try {
-      toast({
-        title: "Canceling subscription...",
-        description: "You will keep access until the current period ends.",
-      });
-
-      const { data, error } = await supabase.functions.invoke("cancel-subscription");
-
-      if (error) {
-        console.error("cancel-subscription error:", error);
-        toast({
-          title: "Error",
-          description: error.message || "Failed to cancel subscription. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      if (!data?.ok) {
-        toast({
-          title: "Error",
-          description: data?.error || "Failed to cancel subscription. Please try again.",
-          variant: "destructive",
-        });
-        return;
-      }
-
-      await fetchProfileSubscription();
-
-      toast({
-        title: "Cancellation scheduled",
-        description: data?.subscription_end_date
-          ? `You will keep access until ${format(new Date(data.subscription_end_date), "MMM dd, yyyy")}.`
-          : "You will keep access until the current period ends.",
-      });
-    } finally {
-      setCanceling(false);
-    }
+  // Manual cancellation: reveal support-contact instructions instead of calling
+  // the old Stripe cancel-subscription function.
+  const handleCancelSubscription = () => {
+    setShowCancelInfo(true);
   };
 
   return (
@@ -246,20 +214,42 @@ export default function BillingPage() {
 
             {/* Actions */}
             {currentPlanId !== "free" ? (
-              <div className="flex flex-wrap gap-3">
-                <Button variant="outline" onClick={handleChangePlan} disabled={loading}>
-                  {loading ? "Loading..." : "Manage Billing"}
-                </Button>
+              <>
+                <div className="flex flex-wrap gap-3">
+                  <Button variant="outline" onClick={handleChangePlan} disabled={loading}>
+                    {loading ? "Loading..." : "Manage Billing"}
+                  </Button>
 
-                <Button
-                  variant="destructive"
-                  onClick={handleCancelSubscription}
-                  disabled={canceling || cancelScheduled}
-                  title={cancelScheduled ? "Cancellation already scheduled" : undefined}
-                >
-                  {cancelScheduled ? "Cancellation Scheduled" : canceling ? "Updating..." : "Cancel Subscription"}
-                </Button>
-              </div>
+                  <Button
+                    variant="destructive"
+                    onClick={handleCancelSubscription}
+                    disabled={cancelScheduled}
+                    title={cancelScheduled ? "Cancellation already scheduled" : undefined}
+                  >
+                    {cancelScheduled ? "Cancellation Scheduled" : "Cancel Subscription"}
+                  </Button>
+                </div>
+
+                {showCancelInfo && (
+                  <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Cancel your subscription</AlertTitle>
+                    <AlertDescription className="space-y-3">
+                      <p>
+                        To cancel your subscription, please contact AM4M Support at{" "}
+                        <a className="font-medium underline" href={CANCEL_SUPPORT_MAILTO}>
+                          {SUPPORT_EMAIL}
+                        </a>
+                        . Your membership will remain active until the end of your paid billing
+                        period after cancellation is processed.
+                      </p>
+                      <Button asChild variant="outline">
+                        <a href={CANCEL_SUPPORT_MAILTO}>Email AM4M Support</a>
+                      </Button>
+                    </AlertDescription>
+                  </Alert>
+                )}
+              </>
             ) : (
               <div className="bg-gradient-to-r from-purple-50 to-pink-50 p-6 rounded-lg">
                 <h3 className="font-semibold mb-2">Unlock Premium Features</h3>
