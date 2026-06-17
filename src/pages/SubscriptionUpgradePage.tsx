@@ -6,6 +6,7 @@ import { supabase } from '@/lib/supabase';
 import { toast } from 'sonner';
 import { startCheckout } from '@/lib/startCheckout';
 import { PaymentMethodsNotice } from '@/components/billing/PaymentMethodsNotice';
+import { isNativePlatform } from '@/lib/platform';
 
 type PlanId = 'free' | 'silver' | 'gold';
 
@@ -213,6 +214,34 @@ export default function SubscriptionUpgradePage() {
           </div>
         </div>
 
+        {isNativePlatform() ? (
+          /* Native iOS: no purchase buttons, no external checkout, no website
+             link. Show current plan status and neutral, compliant copy only
+             (App Store Guideline 3.1.1). Existing Silver/Gold users keep full
+             access — feature gating reads subscription_tier from Supabase and
+             is unaffected by hiding the upgrade flow. */
+          <div className="max-w-xl mx-auto text-center">
+            <h1 className="text-3xl font-bold text-gray-900 mb-4">
+              Your Plan
+            </h1>
+            <div className="rounded-2xl border-2 border-gray-200 bg-white shadow-sm p-8">
+              <p className="text-sm text-gray-500">Current plan</p>
+              <p className="text-2xl font-semibold text-gray-900 mt-1">
+                {currentPlan?.name ?? 'Free'}
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                Likes: {currentPlan?.maxLikesLabel} · Super-Intros:{' '}
+                {currentPlan?.maxSuperIntrosLabel}
+              </p>
+              <p className="text-base text-gray-600 mt-6">
+                Plan upgrades and purchases aren&apos;t available inside the app.
+                If you already have a Silver or Gold subscription, all of your
+                benefits are active here and you can keep using them normally.
+              </p>
+            </div>
+          </div>
+        ) : (
+          <>
         <div className="text-center mb-10">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">
             Choose Your Plan
@@ -319,6 +348,8 @@ export default function SubscriptionUpgradePage() {
             );
           })}
         </div>
+          </>
+        )}
 
       </div>
     </section>

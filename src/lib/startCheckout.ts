@@ -1,6 +1,7 @@
 import { toast } from "sonner";
 import { buildCheckoutUrl, PLAN_PRICING, type PaidTier } from "@/lib/ccbill";
 import { supabase } from "@/lib/supabase";
+import { isNativePlatform } from "@/lib/platform";
 
 /**
  * Sends the user to CCBill checkout via top-level same-tab navigation.
@@ -17,6 +18,14 @@ import { supabase } from "@/lib/supabase";
  * can match the payment to the right profile.
  */
 export async function startCheckout(tier: PaidTier) {
+  // Native iOS safety backstop: never send users to external (CCBill) checkout
+  // from inside the Capacitor app (App Store Guideline 3.1.1). This is the hard
+  // gate — even if a CTA slips through, no external payment navigation fires.
+  if (isNativePlatform()) {
+    toast.info("Plan changes aren't available in the app.");
+    return;
+  }
+
   const plan = PLAN_PRICING[tier];
 
   if (!plan.formDigest) {
