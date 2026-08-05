@@ -1,5 +1,5 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
@@ -56,6 +56,18 @@ type DiscoverProfileRow = {
   halal_strict?: string | null;
 };
 
+// How long cached Discover results/swipe position stay valid before a
+// return visit forces a fresh fetch instead of restoring where the user
+// left off.
+const DISCOVER_CACHE_TTL_MS = 15 * 60 * 1000;
+
+type DiscoverCache = {
+  filters: DiscoverFilters;
+  profiles: DiscoverProfileRow[];
+  currentIndex: number;
+  savedAt: number;
+};
+
 export default function Discover() {
   const navigate = useNavigate();
   const { user, profile } = useAuth();
@@ -106,6 +118,45 @@ export default function Discover() {
     }
   }, [user?.id, filters, filtersHydrated]);
 
+  // Track whether we've attempted to restore cached results/swipe position
+  // for this user, so leaving Discover (e.g. via bottom nav) and coming back
+  // doesn't force a brand-new search + reset the swipe stack every time.
+  const [resultsHydrated, setResultsHydrated] = useState(false);
+  const skipNextFetchRef = useRef(false);
+
+  useEffect(() => {
+    if (!user?.id || !filtersHydrated || resultsHydrated) return;
+    try {
+      const saved = sessionStorage.getItem(`discover-results:${user.id}`);
+      if (saved) {
+        const cached = JSON.parse(saved) as DiscoverCache;
+        const isFresh = Date.now() - cached.savedAt < DISCOVER_CACHE_TTL_MS;
+        const sameFilters = JSON.stringify(cached.filters) === JSON.stringify(filters);
+        if (isFresh && sameFilters && Array.isArray(cached.profiles)) {
+          setProfiles(cached.profiles);
+          setCurrentIndex(cached.currentIndex ?? 0);
+          setLoading(false);
+          skipNextFetchRef.current = true;
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to load cached discover results:', e);
+    }
+    setResultsHydrated(true);
+  }, [user?.id, filtersHydrated, resultsHydrated, filters]);
+
+  // Keep the cache in sync with whatever's on screen (fresh fetch or a
+  // swipe moving currentIndex forward), so the next visit picks up here.
+  useEffect(() => {
+    if (!user?.id || !resultsHydrated) return;
+    try {
+      const cache: DiscoverCache = { filters, profiles, currentIndex, savedAt: Date.now() };
+      sessionStorage.setItem(`discover-results:${user.id}`, JSON.stringify(cache));
+    } catch (e) {
+      console.warn('Failed to cache discover results:', e);
+    }
+  }, [user?.id, resultsHydrated, filters, profiles, currentIndex]);
+
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [selectedProfile, setSelectedProfile] = useState<DiscoverProfileRow | null>(null);
 
@@ -128,9 +179,16 @@ export default function Discover() {
     // don't fetch with default filters first, then refetch with saved
     // filters a tick later.
     if (!filtersHydrated) return;
+    // Wait for the cache-restore attempt too, so we don't fetch and then
+    // immediately clobber results we just restored from sessionStorage.
+    if (!resultsHydrated) return;
+    if (skipNextFetchRef.current) {
+      skipNextFetchRef.current = false;
+      return;
+    }
     fetchProfiles();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user, profile, filters, filtersHydrated]);
+  }, [user, profile, filters, filtersHydrated, resultsHydrated]);
 
   const fetchProfiles = async () => {
     if (!user) return;

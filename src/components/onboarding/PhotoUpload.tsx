@@ -206,20 +206,35 @@ export const PhotoUpload: React.FC<PhotoUploadProps> = ({
       }
 
       // 2) Remove from media table
+      // Supabase's delete() does not error when RLS blocks the delete and
+      // zero rows match — it reports success either way. Select the deleted
+      // rows back so we can tell a real delete apart from a silent no-op.
       if (photo.id) {
-        const { error: dbError } = await supabase
+        const { data: deletedRows, error: dbError } = await supabase
           .from('media')
           .delete()
-          .eq('id', photo.id);
+          .eq('id', photo.id)
+          .select('id');
         if (dbError) throw dbError;
+        if (!deletedRows || deletedRows.length === 0) {
+          throw new Error(
+            'This photo could not be deleted. Please try again or contact support if the problem continues.'
+          );
+        }
       } else {
         // Fallback: delete by URL if we don't have id
-        const { error: dbError } = await supabase
+        const { data: deletedRows, error: dbError } = await supabase
           .from('media')
           .delete()
           .eq('user_id', user.id)
-          .eq('url', photo.url);
+          .eq('url', photo.url)
+          .select('id');
         if (dbError) throw dbError;
+        if (!deletedRows || deletedRows.length === 0) {
+          throw new Error(
+            'This photo could not be deleted. Please try again or contact support if the problem continues.'
+          );
+        }
       }
 
       // 3) If this was the main photo, clear profile_photo_id
