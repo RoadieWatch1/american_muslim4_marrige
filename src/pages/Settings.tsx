@@ -49,6 +49,11 @@ import BillingManagement from '@/components/settings/BillingManagement';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { CreditCard } from 'lucide-react';
 
+// Code-only flag (no env needed). Flip to true once send-2fa-code exists and
+// Twilio is wired up — see PHONE_VERIFICATION_ENABLED in Onboarding.tsx for
+// the same pattern applied to phone verification during onboarding.
+const TWO_FACTOR_SMS_ENABLED = false;
+
 type Frequency = 'instant' | 'daily' | 'weekly';
 
 interface NotificationPreferences {
@@ -738,7 +743,22 @@ export default function Settings() {
           </TabsContent>
 
           <TabsContent value="security" className="space-y-6">
-            <TwoFactorSetup />
+            {TWO_FACTOR_SMS_ENABLED ? (
+              <TwoFactorSetup />
+            ) : (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <ShieldCheck className="w-5 h-5 text-teal-600" />
+                    Two-Factor Authentication
+                  </CardTitle>
+                  <CardDescription>
+                    SMS-based two-factor authentication is temporarily unavailable. Your account is
+                    still protected by email verification. Check back soon.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            )}
           </TabsContent>
 
           <TabsContent value="account" className="space-y-6">

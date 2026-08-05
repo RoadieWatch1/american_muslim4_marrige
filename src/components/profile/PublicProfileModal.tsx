@@ -46,14 +46,14 @@ export default function PublicProfileModal({
     (async () => {
       setLoadingMedia(true);
       try {
-        // Only approved media; do not expose pending/rejected
-        const { data, error } = await supabase
-          .from("media")
-          .select("id, type, url, is_primary, created_at")
-          .eq("user_id", profileId)
-          .eq("status", "approved")
-          .order("is_primary", { ascending: false })
-          .order("created_at", { ascending: false });
+        // Only approved media; do not expose pending/rejected.
+        // Uses a SECURITY DEFINER RPC because the media table's RLS only
+        // allows a user to read their own rows — a direct `.from("media")`
+        // select here would silently return zero rows when viewing
+        // someone else's profile.
+        const { data, error } = await supabase.rpc("get_profile_media", {
+          p_user_id: profileId,
+        });
 
         if (error) {
           console.error("Failed to load media:", error);
