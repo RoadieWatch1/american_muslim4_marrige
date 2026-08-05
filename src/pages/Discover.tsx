@@ -124,6 +124,21 @@ export default function Discover() {
   const [resultsHydrated, setResultsHydrated] = useState(false);
   const skipNextFetchRef = useRef(false);
 
+  // Timestamp the currently-loaded results are considered "as of". Set to a
+  // fresh Date.now() only when fetchProfiles() actually completes, and
+  // otherwise preserved as-is (including when restoring from cache) — never
+  // bumped just because cached state was restored or the user swiped. That
+  // keeps the cache's real age advancing toward DISCOVER_CACHE_TTL_MS
+  // instead of resetting every time Discover is reopened (previously this
+  // was recomputed with Date.now() on every persist, creating a sliding TTL
+  // that could never expire for a user who kept reopening Discover within
+  // the window, trapping them on stale/exhausted results indefinitely).
+  const cachedAtRef = useRef<number | null>(null);
+
+  // Whether what's currently on screen came from a cache restore rather
+  // than a fresh fetch — used only to adjust the empty-state copy.
+  const [resultsFromCache, setResultsFromCache] = useState(false);
+
   useEffect(() => {
     if (!user?.id || !filtersHydrated || resultsHydrated) return;
     try {
@@ -136,6 +151,8 @@ export default function Discover() {
           setProfiles(cached.profiles);
           setCurrentIndex(cached.currentIndex ?? 0);
           setLoading(false);
+          cachedAtRef.current = cached.savedAt;
+          setResultsFromCache(true);
           skipNextFetchRef.current = true;
         }
       }
@@ -145,12 +162,20 @@ export default function Discover() {
     setResultsHydrated(true);
   }, [user?.id, filtersHydrated, resultsHydrated, filters]);
 
-  // Keep the cache in sync with whatever's on screen (fresh fetch or a
-  // swipe moving currentIndex forward), so the next visit picks up here.
+  // Keep the cache in sync with whatever's on screen (e.g. a swipe moving
+  // currentIndex forward), reusing cachedAtRef rather than stamping a new
+  // timestamp — only a successful fetchProfiles() call advances the cache's
+  // age. Skipped entirely until there's a real timestamp to persist under
+  // (i.e. before any successful fetch or cache restore has happened).
   useEffect(() => {
-    if (!user?.id || !resultsHydrated) return;
+    if (!user?.id || !resultsHydrated || cachedAtRef.current === null) return;
     try {
-      const cache: DiscoverCache = { filters, profiles, currentIndex, savedAt: Date.now() };
+      const cache: DiscoverCache = {
+        filters,
+        profiles,
+        currentIndex,
+        savedAt: cachedAtRef.current,
+      };
       sessionStorage.setItem(`discover-results:${user.id}`, JSON.stringify(cache));
     } catch (e) {
       console.warn('Failed to cache discover results:', e);
@@ -269,6 +294,10 @@ export default function Discover() {
 
       const filteredProfiles = rawProfiles.filter((p) => !blockedIds.has(p.id));
 
+      // A real fetch succeeded — this is the only place the cache's age
+      // should advance, so future visits get a genuinely fresh TTL window.
+      cachedAtRef.current = Date.now();
+      setResultsFromCache(false);
       setProfiles(filteredProfiles);
       setCurrentIndex(0);
     } catch (err) {
@@ -279,6 +308,22 @@ export default function Discover() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Manual refresh: explicitly drop the cached results (rather than relying
+  // on fetchProfiles() to overwrite them) and force a real fetch, so a
+  // failed refetch doesn't leave a stale cache entry behind.
+  const handleManualRefresh = () => {
+    if (user?.id) {
+      try {
+        sessionStorage.removeItem(`discover-results:${user.id}`);
+      } catch (e) {
+        console.warn('Failed to clear cached discover results:', e);
+      }
+    }
+    cachedAtRef.current = null;
+    setResultsFromCache(false);
+    fetchProfiles();
   };
 
   // Intro Request handler (unchanged)
@@ -623,8 +668,12 @@ export default function Discover() {
           <div className="text-center py-20">
             <div className="text-6xl mb-4">🤲</div>
             <h2 className="text-2xl font-bold mb-2">No More Profiles</h2>
-            <p className="text-gray-600 mb-6">Check later for new matches or adjust filters.</p>
-            <Button onClick={fetchProfiles}>Refresh</Button>
+            <p className="text-gray-600 mb-6">
+              {resultsFromCache
+                ? 'Showing your last search. Refresh to check for new profiles.'
+                : 'Check later for new matches or adjust filters.'}
+            </p>
+            <Button onClick={handleManualRefresh}>Refresh</Button>
           </div>
         )}
       </div>
