@@ -1,8 +1,25 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/Button";
-import { ShieldCheck, Video, Image as ImageIcon, Heart } from "lucide-react";
+import {
+  ShieldCheck,
+  Video,
+  Image as ImageIcon,
+  Heart,
+  ChevronLeft,
+  ChevronRight,
+} from "lucide-react";
 import SubscriptionBadge from "@/components/profile/SubscriptionBadge";
+
+// Above this many photos, a full row of dots stops being usable — fall
+// back to the counter as the primary indicator instead.
+const MAX_VISIBLE_DOTS = 8;
+
+// Minimum horizontal drag distance to count as a swipe, and how much it
+// must dominate vertical movement by, so an ordinary vertical scroll
+// inside the modal never gets mistaken for a photo swipe.
+const SWIPE_THRESHOLD_PX = 50;
+const SWIPE_DIRECTION_RATIO = 1.5;
 
 export type PublicProfile = {
   id: string;
@@ -112,6 +129,63 @@ export default function PublicProfileView({
   const activePhotoUrl =
     mergedPhotos[Math.min(activePhotoIndex, mergedPhotos.length - 1)]?.url;
 
+  const photoCount = mergedPhotos.length;
+  const hasMultiplePhotos = photoCount > 1;
+
+  // Reset to the first photo whenever a different profile is shown —
+  // otherwise the index (and the new "N of total" counter) could carry
+  // over from a previously-viewed profile with a different photo count.
+  useEffect(() => {
+    setActivePhotoIndex(0);
+  }, [profile.id]);
+
+  const goToPrevPhoto = () => {
+    setActivePhotoIndex((i) => (i - 1 + photoCount) % photoCount);
+  };
+
+  const goToNextPhoto = () => {
+    setActivePhotoIndex((i) => (i + 1) % photoCount);
+  };
+
+  // Left/Right arrow keys navigate photos while this view is mounted
+  // (i.e. while the profile modal is open), mirroring the modal's own
+  // Escape-to-close listener.
+  useEffect(() => {
+    if (!hasMultiplePhotos) return;
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key === "ArrowLeft") goToPrevPhoto();
+      else if (e.key === "ArrowRight") goToNextPhoto();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasMultiplePhotos, photoCount]);
+
+  // Track touch start position (a ref, not state, so touchmove doesn't
+  // trigger re-renders) to detect a horizontal swipe on touch end.
+  const touchStartRef = useRef<{ x: number; y: number } | null>(null);
+
+  const handlePhotoTouchStart = (e: React.TouchEvent) => {
+    const t = e.touches[0];
+    touchStartRef.current = { x: t.clientX, y: t.clientY };
+  };
+
+  const handlePhotoTouchEnd = (e: React.TouchEvent) => {
+    const start = touchStartRef.current;
+    touchStartRef.current = null;
+    if (!start || !hasMultiplePhotos) return;
+
+    const t = e.changedTouches[0];
+    const dx = t.clientX - start.x;
+    const dy = t.clientY - start.y;
+
+    if (Math.abs(dx) < SWIPE_THRESHOLD_PX) return;
+    if (Math.abs(dx) < Math.abs(dy) * SWIPE_DIRECTION_RATIO) return;
+
+    if (dx < 0) goToNextPhoto();
+    else goToPrevPhoto();
+  };
+
   const fullName = useMemo(() => {
     const fn = profile.first_name || "";
     const ln = profile.last_name || "";
@@ -128,7 +202,11 @@ export default function PublicProfileView({
     <div className="w-full">
       {/* Photo / Gallery */}
       <div className="relative w-full overflow-hidden rounded-2xl bg-white shadow-sm border">
-        <div className="aspect-[3/4] w-full bg-gray-100">
+        <div
+          className="aspect-[3/4] w-full bg-gray-100"
+          onTouchStart={handlePhotoTouchStart}
+          onTouchEnd={handlePhotoTouchEnd}
+        >
           <img
             src={activePhotoUrl}
             alt="profile"
@@ -137,18 +215,60 @@ export default function PublicProfileView({
           />
         </div>
 
-        {/* Photo dots */}
-        {mergedPhotos.length > 1 && (
-          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-2">
-            {mergedPhotos.slice(0, 8).map((p, idx) => (
+        {/* Prev/Next arrows */}
+        {hasMultiplePhotos && (
+          <>
+            <button
+              type="button"
+              onClick={goToPrevPhoto}
+              aria-label="Previous photo"
+              className="absolute left-2 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={goToNextPhoto}
+              aria-label="Next photo"
+              className="absolute right-2 top-1/2 -translate-y-1/2 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-black/50 text-white shadow-lg backdrop-blur-sm transition hover:bg-black/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </>
+        )}
+
+        {/* Photo counter */}
+        {hasMultiplePhotos && (
+          <div
+            className="absolute top-3 right-3 rounded-full bg-black/60 px-2.5 py-1 text-xs font-semibold text-white"
+            aria-live="polite"
+          >
+            <span aria-label={`Photo ${activePhotoIndex + 1} of ${photoCount}`}>
+              {activePhotoIndex + 1} of {photoCount}
+            </span>
+          </div>
+        )}
+
+        {/* Photo dots — only shown for galleries small enough that a full
+            row stays usable; the counter above is the primary indicator
+            once a profile has more photos than that. */}
+        {hasMultiplePhotos && photoCount <= MAX_VISIBLE_DOTS && (
+          <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5">
+            {mergedPhotos.map((p, idx) => (
               <button
                 key={p.id}
+                type="button"
                 onClick={() => setActivePhotoIndex(idx)}
-                className={`h-2 w-2 rounded-full ${
-                  idx === activePhotoIndex ? "bg-white" : "bg-white/50"
-                }`}
-                aria-label={`Photo ${idx + 1}`}
-              />
+                aria-label={`Go to photo ${idx + 1}`}
+                aria-current={idx === activePhotoIndex}
+                className="flex items-center justify-center rounded-full p-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-1"
+              >
+                <span
+                  className={`block rounded-full transition-all ${
+                    idx === activePhotoIndex ? "h-2.5 w-6 bg-white" : "h-2.5 w-2.5 bg-white/60"
+                  }`}
+                />
+              </button>
             ))}
           </div>
         )}
