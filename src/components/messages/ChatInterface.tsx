@@ -1,10 +1,11 @@
 // src/components/messages/ChatInterface.tsx
-import { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef, Fragment } from 'react';
 import { Message, Conversation } from '@/types';
 import { MessageBubble } from './MessageBubble';
 import { Button } from '@/components/ui/Button';
 import { Input } from '@/components/ui/input';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { Skeleton } from '@/components/ui/skeleton';
 import {
   AlertDialog,
   AlertDialogAction,
@@ -21,6 +22,7 @@ import { supabase } from '@/lib/supabase';
 import { useAuth } from '@/contexts/AuthContext';
 import { notifyNewMessage } from '@/lib/notifications';
 import { toast } from 'sonner';
+import { format, isSameDay, isToday, isYesterday } from 'date-fns';
 import PublicProfileModal from '@/components/profile/PublicProfileModal';
 import type { PublicProfile } from '@/components/profile/PublicProfileView';
 import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
@@ -43,6 +45,13 @@ function getAvatarColor(userId: string) {
   return AVATAR_COLORS[hash];
 }
 
+function formatDateSeparator(dateStr: string) {
+  const date = new Date(dateStr);
+  if (isToday(date)) return 'Today';
+  if (isYesterday(date)) return 'Yesterday';
+  return format(date, 'MMMM d, yyyy');
+}
+
 interface ChatInterfaceProps {
   conversation: Conversation;
   onBack: () => void;
@@ -60,10 +69,16 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
   const [newMessage, setNewMessage] = useState('');
   const [isTyping] = useState(false); // placeholder if you add typing later
   const [loading, setLoading] = useState(false);
+  const [messagesLoading, setMessagesLoading] = useState(true);
   const [hasMoreOlder, setHasMoreOlder] = useState(false);
   const [loadingOlder, setLoadingOlder] = useState(false);
   const [blocking, setBlocking] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  // Set true right before a change that should scroll to the latest
+  // message (initial load, a new incoming/sent message). Left false for
+  // an older-messages prepend, which preserves scroll position instead.
+  const shouldAutoScrollRef = useRef(false);
   const [selectedProfile, setSelectedProfile] = useState<PublicProfile | null>(null);
   const [profileModalOpen, setProfileModalOpen] = useState(false);
   const [loadingProfile, setLoadingProfile] = useState(false);
@@ -100,9 +115,18 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
   // Load + subscribe
   useEffect(() => {
     let chan: ReturnType<typeof supabase.channel> | null = null;
+    let cancelled = false;
 
     const init = async () => {
+      // Clear out the previous conversation's messages immediately so
+      // switching threads never briefly shows the wrong conversation —
+      // the skeleton below covers this gap instead.
+      setMessagesLoading(true);
+      setMessages([]);
+
       await loadMessages();
+      if (cancelled) return;
+      setMessagesLoading(false);
       await markAsRead();
 
       chan = supabase
@@ -118,6 +142,7 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
           (payload) => {
             if (payload.eventType === 'INSERT') {
               setMessages((prev) => [...prev, payload.new as Message]);
+              shouldAutoScrollRef.current = true;
               // if this client is receiver, we mark as read
               void markAsRead();
             } else if (payload.eventType === 'UPDATE') {
@@ -136,6 +161,7 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
     void init();
 
     return () => {
+      cancelled = true;
       if (chan) supabase.removeChannel(chan);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -154,6 +180,7 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
       const ordered = (data as Message[]).slice().reverse();
       setMessages(ordered);
       setHasMoreOlder(data.length === PAGE_SIZE);
+      shouldAutoScrollRef.current = true;
     }
   };
 
@@ -172,8 +199,25 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
 
       if (data) {
         const olderOrdered = (data as Message[]).slice().reverse();
+
+        // Prepending older messages pushes the currently-visible content
+        // down by the height of what's inserted above it. Capture the
+        // scroll metrics beforehand and restore the same visual position
+        // after render, instead of letting the browser (or the auto-scroll
+        // effect) jump the reader back to the bottom.
+        const container = scrollContainerRef.current;
+        const prevScrollHeight = container?.scrollHeight ?? 0;
+        const prevScrollTop = container?.scrollTop ?? 0;
+
         setMessages((prev) => [...olderOrdered, ...prev]);
         setHasMoreOlder(data.length === PAGE_SIZE);
+
+        requestAnimationFrame(() => {
+          if (container) {
+            const newScrollHeight = container.scrollHeight;
+            container.scrollTop = prevScrollTop + (newScrollHeight - prevScrollHeight);
+          }
+        });
       }
     } finally {
       setLoadingOlder(false);
@@ -296,6 +340,8 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
   };
 
   useEffect(() => {
+    if (!shouldAutoScrollRef.current) return;
+    shouldAutoScrollRef.current = false;
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   }, [messages]);
 
@@ -392,22 +438,71 @@ export function ChatInterface({ conversation, onBack, onConversationGone }: Chat
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4">
-        {hasMoreOlder && (
-          <div className="text-center mb-3">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={loadOlder}
-              disabled={loadingOlder}
-            >
-              {loadingOlder ? 'Loading...' : 'Load earlier messages'}
-            </Button>
+      <div ref={scrollContainerRef} className="flex-1 overflow-y-auto p-4">
+        {messagesLoading ? (
+          <div className="space-y-3">
+            <div className="flex justify-start">
+              <Skeleton className="h-10 w-2/3 rounded-2xl" />
+            </div>
+            <div className="flex justify-end">
+              <Skeleton className="h-10 w-1/2 rounded-2xl" />
+            </div>
+            <div className="flex justify-start">
+              <Skeleton className="h-10 w-3/5 rounded-2xl" />
+            </div>
           </div>
+        ) : (
+          <>
+            {hasMoreOlder && (
+              <div className="text-center mb-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={loadOlder}
+                  disabled={loadingOlder}
+                >
+                  {loadingOlder ? 'Loading...' : 'Load earlier messages'}
+                </Button>
+              </div>
+            )}
+            {messages.map((msg, index) => {
+              const prevMsg = messages[index - 1];
+              const nextMsg = messages[index + 1];
+              const msgDate = new Date(msg.created_at);
+
+              const showDateSeparator =
+                !prevMsg || !isSameDay(new Date(prevMsg.created_at), msgDate);
+
+              const isGroupStart =
+                !prevMsg ||
+                prevMsg.sender_id !== msg.sender_id ||
+                !isSameDay(new Date(prevMsg.created_at), msgDate);
+
+              const isGroupEnd =
+                !nextMsg ||
+                nextMsg.sender_id !== msg.sender_id ||
+                !isSameDay(new Date(nextMsg.created_at), msgDate);
+
+              return (
+                <Fragment key={msg.id}>
+                  {showDateSeparator && (
+                    <div className="flex items-center justify-center my-4">
+                      <span className="text-xs font-medium text-muted-foreground bg-muted px-3 py-1 rounded-full">
+                        {formatDateSeparator(msg.created_at)}
+                      </span>
+                    </div>
+                  )}
+                  <MessageBubble
+                    message={msg}
+                    isSender={msg.sender_id === user?.id}
+                    isGroupStart={isGroupStart}
+                    isGroupEnd={isGroupEnd}
+                  />
+                </Fragment>
+              );
+            })}
+          </>
         )}
-        {messages.map((msg) => (
-          <MessageBubble key={msg.id} message={msg} isSender={msg.sender_id === user?.id} />
-        ))}
         <div ref={messagesEndRef} />
       </div>
 

@@ -346,6 +346,9 @@ export default function Messages() {
             <MessageSquare className="h-6 w-6 text-primary" />
             <h1 className="text-2xl font-bold">Messages</h1>
           </div>
+          <p className="text-xs text-muted-foreground mt-1">
+            You can message multiple matches and continue the conversations that feel right.
+          </p>
         </div>
 
         <ConversationList
