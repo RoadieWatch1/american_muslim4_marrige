@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { supabase } from '@/lib/supabase';
+import SubscriptionBadge from '@/components/profile/SubscriptionBadge';
 
 type CommunityMember = {
   id: string;
@@ -8,6 +9,7 @@ type CommunityMember = {
   state: string | null;
   age: number | null;
   profile_photo_url: string | null;
+  subscription_tier?: string | null;
 };
 
 const FALLBACK_MEMBERS: Array<{
@@ -41,7 +43,34 @@ export const Community: React.FC = () => {
           return;
         }
 
-        if (!cancelled) setMembers((data as CommunityMember[]) || []);
+        const preview = (data as CommunityMember[]) || [];
+
+        // get_community_preview doesn't return subscription_tier, so fetch
+        // it separately via the existing get_basic_profiles RPC (already
+        // SECURITY DEFINER and already used elsewhere for the same field)
+        // rather than modifying an RPC whose full definition isn't tracked
+        // in this repo.
+        if (preview.length > 0) {
+          const { data: basicProfiles, error: basicError } = await supabase.rpc(
+            'get_basic_profiles',
+            { p_user_ids: preview.map((m) => m.id) }
+          );
+
+          if (basicError) {
+            console.error('get_basic_profiles error:', basicError);
+          } else {
+            const tierById = new Map(
+              (basicProfiles as { id: string; subscription_tier?: string | null }[]).map(
+                (p) => [p.id, p.subscription_tier]
+              )
+            );
+            for (const m of preview) {
+              m.subscription_tier = tierById.get(m.id) ?? null;
+            }
+          }
+        }
+
+        if (!cancelled) setMembers(preview);
       } catch (e) {
         console.error('Community load failed:', e);
         if (!cancelled) setMembers([]);
@@ -71,6 +100,7 @@ export const Community: React.FC = () => {
           showAge: age !== null,
           location: loc,
           image: m.profile_photo_url || 'https://placehold.co/600x800?text=AM4M',
+          subscriptionTier: m.subscription_tier ?? null,
         };
       })
       : FALLBACK_MEMBERS.map((m, idx) => ({
@@ -80,6 +110,7 @@ export const Community: React.FC = () => {
         showAge: true,
         location: m.location,
         image: m.image,
+        subscriptionTier: null as string | null,
       }));
 
   return (
@@ -114,6 +145,9 @@ export const Community: React.FC = () => {
                   className="w-full h-48 object-cover group-hover:scale-110 transition-transform duration-300"
                   loading="lazy"
                 />
+                <div className="absolute top-2 right-2">
+                  <SubscriptionBadge tier={member.subscriptionTier} size="xs" />
+                </div>
                 <div className="absolute inset-0 bg-gradient-to-t from-black/70 to-transparent flex items-end p-4">
                   <div className="text-white">
                     <p className="font-semibold">
