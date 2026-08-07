@@ -64,8 +64,27 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
   // silently wipe out coordinates the user just picked.
   const confirmedCityRef = useRef('');
 
+  // Whether Google Places autocomplete is actually usable. Google rejects a
+  // bad / referrer-restricted / unbilled API key *after* its script has loaded
+  // successfully (it shows its own "can't load Google Maps correctly" overlay
+  // and calls the gm_authFailure global), so a try/catch around
+  // loadGooglePlaces() cannot detect that case. When autocomplete is
+  // unavailable the user has no way to produce coordinates at all, so the
+  // form must not require them — otherwise the profile becomes unsaveable.
+  const [placesAvailable, setPlacesAvailable] = useState(true);
+
   useEffect(() => {
     let cancelled = false;
+
+    // Google calls this global when it rejects the API key.
+    (window as any).gm_authFailure = () => {
+      console.error(
+        'Google Maps authentication failed — city autocomplete unavailable. ' +
+          'Check the API key restrictions, billing, and that the Places API is enabled.'
+      );
+      if (!cancelled) setPlacesAvailable(false);
+    };
+
     (async () => {
       try {
         await loadGooglePlaces();
@@ -120,10 +139,12 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
         });
       } catch (err) {
         console.error('Google Places failed to load:', err);
+        if (!cancelled) setPlacesAvailable(false);
       }
     })();
     return () => {
       cancelled = true;
+      delete (window as any).gm_authFailure;
     };
   }, []);
 
@@ -191,7 +212,14 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
       alert('Please select your marital status.');
       return;
     }
-    if (formData.latitude == null || formData.longitude == null) {
+    // Only require coordinates when the user actually has working city
+    // suggestions to pick from. If Google Places is unavailable there is no
+    // way to produce coordinates, and blocking here would make the profile
+    // impossible to save at all — degrade to saving without them instead.
+    if (
+      placesAvailable &&
+      (formData.latitude == null || formData.longitude == null)
+    ) {
       alert(
         'Please select your city from the dropdown suggestions so we can save your location for distance-based matching.'
       );
@@ -274,13 +302,21 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
                   autoComplete="off"
                   required
                 />
-                <p className="text-xs text-gray-500 mt-1">
-                  Pick a city from suggestions so distance-based matching can
-                  work.
-                  {formData.latitude != null && formData.longitude != null && (
-                    <span className="ml-1 text-emerald-600">Location set ✓</span>
-                  )}
-                </p>
+                {placesAvailable ? (
+                  <p className="text-xs text-gray-500 mt-1">
+                    Pick a city from suggestions so distance-based matching can
+                    work.
+                    {formData.latitude != null && formData.longitude != null && (
+                      <span className="ml-1 text-emerald-600">Location set ✓</span>
+                    )}
+                  </p>
+                ) : (
+                  <p className="text-xs text-amber-600 mt-1">
+                    City suggestions are temporarily unavailable, so
+                    distance-based matching may not work for now. You can still
+                    type your city and save the rest of your profile.
+                  </p>
+                )}
               </div>
 
               <div>
