@@ -15,6 +15,7 @@ import {
   Crown,
   CheckCircle,
   RotateCcw,
+  Send,
 } from "lucide-react";
 
 type BadgeProps = {
@@ -175,6 +176,7 @@ export default function DashboardNav({
               icon={Heart}
               badge={incomingLikes}
             />
+            <NavBtn to="/sent-likes" label="Sent Likes" icon={Send} />
             <NavBtn to="/look-back" label="Look Back" icon={RotateCcw} />
             <NavBtn to="/settings" label="Alerts" icon={Bell} />
           </div>
@@ -233,6 +235,7 @@ export default function DashboardNav({
               badge={incomingLikes}
               fullWidth
             />
+            <NavBtn to="/sent-likes" label="Sent Likes" icon={Send} fullWidth />
             <NavBtn to="/look-back" label="Look Back" icon={RotateCcw} fullWidth />
             <NavBtn to="/settings" label="Alerts" icon={Bell} fullWidth />
 

@@ -15,7 +15,12 @@ type EmailType =
 
 interface EmailRequest {
   type: EmailType;
-  to: string;
+  // Either supply `to` directly, or supply `recipientUserId` and let this
+  // function resolve the recipient's email server-side — this runs with the
+  // service-role key, so it can read `profiles.email` regardless of RLS.
+  // Callers that only know a user id (not their email) should omit `to`
+  // rather than querying another user's email from the client to fill it in.
+  to?: string;
   recipientUserId?: string;
   data: {
     womanName?: string;
@@ -44,10 +49,11 @@ Deno.serve(async (req) => {
 
   try {
     const body: EmailRequest = await req.json();
-    const { type, to, recipientUserId, data = {} } = body;
+    const { type, recipientUserId, data = {} } = body;
+    let to = body.to;
 
-    if (!type || !to) {
-      throw new Error("Missing required fields: type, to");
+    if (!type || (!to && !recipientUserId)) {
+      throw new Error("Missing required fields: type, and either to or recipientUserId");
     }
 
     const supabaseUrl = Deno.env.get("SUPABASE_URL");
@@ -68,7 +74,7 @@ Deno.serve(async (req) => {
       const { data: profile, error } = await supabase
         .from("profiles")
         .select(
-          "email_notifications_enabled, notify_wali_invitations, notify_intro_requests, notify_matches, notify_messages, notification_frequency"
+          "email, email_notifications_enabled, notify_wali_invitations, notify_intro_requests, notify_matches, notify_messages, notification_frequency"
         )
         .eq("id", recipientUserId)
         .single();
@@ -76,6 +82,8 @@ Deno.serve(async (req) => {
       if (error) {
         console.error("Error fetching preferences:", error);
       } else if (profile) {
+        if (!to) to = profile.email ?? undefined;
+
         if (!profile.email_notifications_enabled) {
           return jsonResponse({
             success: true,
@@ -132,6 +140,18 @@ Deno.serve(async (req) => {
           });
         }
       }
+    }
+
+    // No `to` was supplied and none could be resolved from recipientUserId
+    // (missing profile, no email on file, etc.) — skip rather than send to
+    // an empty address.
+    if (!to) {
+      console.error("No recipient email could be resolved", { type, recipientUserId });
+      return jsonResponse({
+        success: true,
+        skipped: true,
+        reason: "no_recipient_email",
+      });
     }
 
     // ─────────────────────────────────────────────────────────────
