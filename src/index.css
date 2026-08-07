@@ -146,6 +146,63 @@
   z-index: 999999 !important;
 }
 
+/* Google PlaceAutocompleteElement (new Places API).
+   The widget renders inside a shadow root, so it is styled through the
+   documented mechanisms only: host-level properties (background, border,
+   radius, color, font) and the exposed CSS ::part() selectors.
+   Values mirror the shadcn Input used by the neighbouring form fields:
+   h-10, rounded-md, border-border/60, bg-background, px-3 py-2, text-sm. */
+.am4m-place-autocomplete {
+  width: 100%;
+}
+
+.am4m-place-autocomplete gmp-place-autocomplete {
+  width: 100%;
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  border-radius: calc(var(--radius) - 2px);
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.am4m-place-autocomplete gmp-place-autocomplete::part(input) {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: calc(var(--radius) - 2px);
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+/* Mirrors focus-visible:ring-2 ring-ring ring-offset-2 on the sibling inputs. */
+.am4m-place-autocomplete gmp-place-autocomplete::part(focus-ring) {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.am4m-place-autocomplete gmp-place-autocomplete::part(prediction-list) {
+  background-color: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border: 1px solid hsl(var(--border) / 0.6);
+  border-radius: calc(var(--radius) - 2px);
+}
+
+.am4m-place-autocomplete gmp-place-autocomplete::part(prediction-item) {
+  padding: 0.5rem 0.75rem;
+  color: hsl(var(--popover-foreground));
+  font-size: 0.875rem;
+  line-height: 1.25rem;
+}
+
+.am4m-place-autocomplete gmp-place-autocomplete::part(prediction-item-main-text) {
+  color: hsl(var(--popover-foreground));
+  font-weight: 500;
+}
+
 
 /* =========================================
    FINAL FIX: Global Overrides for Hardcoded Colors
