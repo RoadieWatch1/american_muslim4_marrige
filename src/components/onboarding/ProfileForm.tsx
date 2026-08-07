@@ -54,14 +54,17 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
     longitude: null as number | null,
   });
 
-  const cityInputRef = useRef<HTMLInputElement | null>(null);
-  const autocompleteAttachedRef = useRef(false);
-  // The city text last associated with a real place selection (either from
-  // Google's place_changed event or a previously-saved profile). Coordinates
-  // are only cleared when the field's text diverges from this — not on
-  // every keystroke — so a stray onChange firing with the same value (e.g.
-  // from the Places widget's own DOM update right after a selection) can't
-  // silently wipe out coordinates the user just picked.
+  // Host node the Google autocomplete custom element is mounted into. It is
+  // always rendered (so the ref exists to mount into) but stays hidden until
+  // the widget is actually ready — the plain fallback input covers that gap.
+  const autocompleteHostRef = useRef<HTMLDivElement | null>(null);
+  const autocompleteElementRef =
+    useRef<google.maps.places.PlaceAutocompleteElement | null>(null);
+  // The city text last associated with a real place selection (either from a
+  // Google selection or a previously-saved profile). Coordinates are only
+  // cleared when the field's text diverges from this — not on every keystroke
+  // — so a redundant change event carrying the same value can't silently wipe
+  // out coordinates the user just picked.
   const confirmedCityRef = useRef('');
 
   // Whether Google Places autocomplete is actually usable. Google rejects a
@@ -72,81 +75,149 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
   // unavailable the user has no way to produce coordinates at all, so the
   // form must not require them — otherwise the profile becomes unsaveable.
   const [placesAvailable, setPlacesAvailable] = useState(true);
+  // Only true once the widget is mounted and interactive. Until then (and
+  // whenever Places is unavailable) the manual text input is shown instead.
+  const [widgetReady, setWidgetReady] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
+    let element: google.maps.places.PlaceAutocompleteElement | null = null;
 
-    // Google calls this global when it rejects the API key.
-    (window as any).gm_authFailure = () => {
-      console.error(
-        'Google Maps authentication failed — city autocomplete unavailable. ' +
-          'Check the API key restrictions, billing, and that the Places API is enabled.'
+    const markUnavailable = (reason: string, err?: unknown) => {
+      console.error(`City autocomplete unavailable: ${reason}`, err ?? '');
+      if (!cancelled) {
+        setPlacesAvailable(false);
+        setWidgetReady(false);
+      }
+    };
+
+    // Google calls this global when it rejects the API key (invalid key,
+    // referrer restriction, billing disabled, Places API not enabled). The
+    // script loads fine in that case, so the try/catch below never sees it.
+    (window as any).gm_authFailure = () =>
+      markUnavailable(
+        'Google Maps authentication failed. Check the API key restrictions, ' +
+          'billing, and that the Places API (New) is enabled.'
       );
-      if (!cancelled) setPlacesAvailable(false);
+
+    const handleSelect = async (event: Event) => {
+      const prediction = (event as google.maps.places.PlacePredictionSelectEvent)
+        .placePrediction;
+      if (!prediction) return;
+
+      try {
+        const place = prediction.toPlace();
+        await place.fetchFields({
+          fields: ['addressComponents', 'location', 'formattedAddress', 'displayName'],
+        });
+        if (cancelled) return;
+
+        // New Places address components expose longText/shortText/types
+        // (the legacy API used long_name/short_name).
+        let city = '';
+        let state = '';
+        let country = '';
+
+        for (const component of place.addressComponents ?? []) {
+          const types = component.types ?? [];
+          if (types.includes('locality')) {
+            city = component.longText ?? city;
+          } else if (!city && types.includes('postal_town')) {
+            city = component.longText ?? city;
+          } else if (!city && types.includes('administrative_area_level_2')) {
+            city = component.longText ?? city;
+          }
+          if (types.includes('administrative_area_level_1')) {
+            state = component.shortText ?? component.longText ?? state;
+          }
+          if (types.includes('country')) {
+            country = component.longText ?? country;
+          }
+        }
+
+        // Fallbacks when Google returns a place without full components.
+        if (!city) city = place.displayName ?? '';
+        if (!city) city = place.formattedAddress?.split(',')[0]?.trim() ?? '';
+
+        const lat = place.location?.lat() ?? null;
+        const lng = place.location?.lng() ?? null;
+
+        confirmedCityRef.current = city;
+
+        setFormData((prev) => ({
+          ...prev,
+          city: city || prev.city,
+          state: state || prev.state,
+          country: country || prev.country,
+          // Coordinates are only ever set from a real Google selection.
+          latitude: typeof lat === 'number' ? lat : prev.latitude,
+          longitude: typeof lng === 'number' ? lng : prev.longitude,
+        }));
+      } catch (err) {
+        // A failed details fetch must not block the user — they keep whatever
+        // they typed and can still save without coordinates.
+        console.error('Failed to fetch place details:', err);
+      }
+    };
+
+    const handleWidgetError = (event: Event) => {
+      // Request-level failure inside the widget. Relaxing validation is always
+      // the safe direction here: it can only unblock saving, never block it.
+      markUnavailable('the autocomplete widget reported an error.', event);
     };
 
     (async () => {
       try {
-        await loadGooglePlaces();
-        if (cancelled || !cityInputRef.current || autocompleteAttachedRef.current) return;
+        const { PlaceAutocompleteElement } = await loadGooglePlaces();
+        if (cancelled || !autocompleteHostRef.current) return;
+        // Guard against a second widget if this effect ever re-runs.
+        if (autocompleteElementRef.current) return;
 
-        const ac = new (window as any).google.maps.places.Autocomplete(
-          cityInputRef.current,
-          {
-            types: ['(cities)'],
-            fields: ['address_components', 'geometry', 'name'],
-          }
-        );
-        autocompleteAttachedRef.current = true;
-
-        ac.addListener('place_changed', () => {
-          const place = ac.getPlace();
-          if (!place) return;
-
-          let city = '';
-          let state = '';
-          let country = '';
-          const components = place.address_components || [];
-          for (const c of components) {
-            const types: string[] = c.types || [];
-            if (types.includes('locality')) city = c.long_name;
-            else if (!city && types.includes('postal_town')) city = c.long_name;
-            else if (!city && types.includes('administrative_area_level_2')) city = c.long_name;
-            if (types.includes('administrative_area_level_1')) state = c.short_name;
-            if (types.includes('country')) country = c.long_name;
-          }
-          if (!city) city = place.name || '';
-
-          confirmedCityRef.current = city;
-
-          const lat =
-            typeof place.geometry?.location?.lat === 'function'
-              ? place.geometry.location.lat()
-              : null;
-          const lng =
-            typeof place.geometry?.location?.lng === 'function'
-              ? place.geometry.location.lng()
-              : null;
-
-          setFormData((prev) => ({
-            ...prev,
-            city: city || prev.city,
-            state: state || prev.state,
-            country: country || prev.country,
-            latitude: typeof lat === 'number' ? lat : prev.latitude,
-            longitude: typeof lng === 'number' ? lng : prev.longitude,
-          }));
+        element = new PlaceAutocompleteElement({
+          // City/locality-type results only, worldwide (AM4M has
+          // international users, so no region restriction).
+          includedPrimaryTypes: ['(cities)'],
         });
+        element.id = 'city';
+        element.setAttribute('style', 'width: 100%;');
+
+        element.addEventListener('gmp-select', handleSelect);
+        element.addEventListener('gmp-error', handleWidgetError);
+
+        autocompleteHostRef.current.appendChild(element);
+        autocompleteElementRef.current = element;
+
+        if (!cancelled) setWidgetReady(true);
       } catch (err) {
-        console.error('Google Places failed to load:', err);
-        if (!cancelled) setPlacesAvailable(false);
+        markUnavailable('the Google Maps script failed to load.', err);
       }
     })();
+
     return () => {
       cancelled = true;
       delete (window as any).gm_authFailure;
+      if (element) {
+        element.removeEventListener('gmp-select', handleSelect);
+        element.removeEventListener('gmp-error', handleWidgetError);
+        element.remove();
+      }
+      autocompleteElementRef.current = null;
     };
   }, []);
+
+  // Seed the widget with an already-saved city when editing an existing
+  // profile. Runs once, when both the widget is ready and a city is known
+  // (initialData can arrive after the widget mounts), so it never fights
+  // with what the user is actively typing.
+  const widgetSeededRef = useRef(false);
+  useEffect(() => {
+    if (!widgetReady || widgetSeededRef.current || !formData.city) return;
+    const element = autocompleteElementRef.current;
+    if (element) {
+      element.value = formData.city;
+      widgetSeededRef.current = true;
+    }
+  }, [widgetReady, formData.city]);
 
   // Prefill from initialData when it changes
   useEffect(() => {
@@ -210,6 +281,12 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
     }
     if (!formData.marital_status) {
       alert('Please select your marital status.');
+      return;
+    }
+    // The Google autocomplete widget renders its own input, so it can't carry
+    // the HTML `required` attribute the plain fallback input uses.
+    if (!formData.city.trim()) {
+      alert('Please enter your city.');
       return;
     }
     // Only require coordinates when the user actually has working city
@@ -280,28 +357,41 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
 
             <div className="grid md:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="city">City *</Label>
-                <Input
-                  id="city"
-                  ref={cityInputRef}
-                  value={formData.city}
-                  onChange={(e) => {
-                    const value = e.target.value;
-                    setFormData((prev) => ({
-                      ...prev,
-                      city: value,
-                      // Only clear previously-resolved coordinates once the
-                      // text no longer matches the last confirmed place —
-                      // not on every keystroke (see confirmedCityRef above).
-                      ...(value !== confirmedCityRef.current
-                        ? { latitude: null, longitude: null }
-                        : {}),
-                    }));
-                  }}
-                  placeholder="Start typing your city…"
-                  autoComplete="off"
-                  required
+                <Label htmlFor={widgetReady ? 'city' : 'city-manual'}>City *</Label>
+
+                {/* Google autocomplete host. Always mounted so the ref exists
+                    to append the custom element into, but hidden until the
+                    widget is actually ready. */}
+                <div
+                  ref={autocompleteHostRef}
+                  className={widgetReady ? 'am4m-place-autocomplete' : 'hidden'}
                 />
+
+                {/* Manual fallback: covers both the brief load window and any
+                    case where Places is unavailable, so the city is always
+                    enterable. */}
+                {!widgetReady && (
+                  <Input
+                    id="city-manual"
+                    value={formData.city}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      setFormData((prev) => ({
+                        ...prev,
+                        city: value,
+                        // Only clear previously-resolved coordinates once the
+                        // text no longer matches the last confirmed place —
+                        // not on every keystroke (see confirmedCityRef above).
+                        ...(value !== confirmedCityRef.current
+                          ? { latitude: null, longitude: null }
+                          : {}),
+                      }));
+                    }}
+                    placeholder="Start typing your city…"
+                    autoComplete="off"
+                    required
+                  />
+                )}
                 {placesAvailable ? (
                   <p className="text-xs text-gray-500 mt-1">
                     Pick a city from suggestions so distance-based matching can
