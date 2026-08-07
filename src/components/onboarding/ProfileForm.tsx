@@ -56,6 +56,13 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
 
   const cityInputRef = useRef<HTMLInputElement | null>(null);
   const autocompleteAttachedRef = useRef(false);
+  // The city text last associated with a real place selection (either from
+  // Google's place_changed event or a previously-saved profile). Coordinates
+  // are only cleared when the field's text diverges from this — not on
+  // every keystroke — so a stray onChange firing with the same value (e.g.
+  // from the Places widget's own DOM update right after a selection) can't
+  // silently wipe out coordinates the user just picked.
+  const confirmedCityRef = useRef('');
 
   useEffect(() => {
     let cancelled = false;
@@ -91,6 +98,8 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
           }
           if (!city) city = place.name || '';
 
+          confirmedCityRef.current = city;
+
           const lat =
             typeof place.geometry?.location?.lat === 'function'
               ? place.geometry.location.lat()
@@ -121,6 +130,10 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
   // Prefill from initialData when it changes
   useEffect(() => {
     if (!initialData) return;
+
+    // Treat the saved city as already-confirmed so re-rendering with the
+    // same prefilled value doesn't get treated as a fresh, unconfirmed edit.
+    confirmedCityRef.current = initialData.city || '';
 
     let dob = initialData.dob || '';
     if (dob && typeof dob === 'string' && dob.length > 10) {
@@ -176,6 +189,12 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
     }
     if (!formData.marital_status) {
       alert('Please select your marital status.');
+      return;
+    }
+    if (formData.latitude == null || formData.longitude == null) {
+      alert(
+        'Please select your city from the dropdown suggestions so we can save your location for distance-based matching.'
+      );
       return;
     }
 
@@ -238,14 +257,19 @@ export const ProfileForm: React.FC<ProfileFormProps> = ({
                   id="city"
                   ref={cityInputRef}
                   value={formData.city}
-                  onChange={(e) =>
-                    setFormData({
-                      ...formData,
-                      city: e.target.value,
-                      latitude: null,
-                      longitude: null,
-                    })
-                  }
+                  onChange={(e) => {
+                    const value = e.target.value;
+                    setFormData((prev) => ({
+                      ...prev,
+                      city: value,
+                      // Only clear previously-resolved coordinates once the
+                      // text no longer matches the last confirmed place —
+                      // not on every keystroke (see confirmedCityRef above).
+                      ...(value !== confirmedCityRef.current
+                        ? { latitude: null, longitude: null }
+                        : {}),
+                    }));
+                  }}
                   placeholder="Start typing your city…"
                   autoComplete="off"
                   required
